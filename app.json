@@ -26,6 +26,12 @@
     "plugins": [
       "expo-router",
       [
+        "react-native-maps",
+        {
+          "mapboxAccessToken": "pk.eyJ1IjoicmFsaWtzNzAyMTAiLCJhIjoiY21icTM1cm4zMGFqNzJxcHdrbHEzY3hkYiJ9.o-DnPquzV98xBU8SMuenjg"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

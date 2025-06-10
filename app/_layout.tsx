@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
@@ -16,6 +17,11 @@ export default function RootLayout() {
     // Async font loading only occurs in development.
     return null;
   }
+
+  useEffect(() => {
+    console.log('Initializing database...');
+    initDatabase();
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
