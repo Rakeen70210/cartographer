@@ -1,9 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
-import MapView, { Polyline } from 'react-native-maps';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, StyleSheet, Text, Platform } from 'react-native';
+import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { database, getLocations } from '../utils/database';
+import { buffer, intersect, lineString, featureCollection } from '@turf/turf';
+
+// Set Mapbox access token (should be configured in app.json via plugin)
+// MapboxGL.setAccessToken('YOUR_MAPBOX_ACCESS_TOKEN'); // Not needed if using Expo config plugin
 
 const LOCATION_TRACKING_TASK_NAME = 'location-tracking';
 
@@ -40,7 +44,10 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, ({ data, error }) => {
 const MapScreen = () => {
   const [location, setLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
-  const [pathData, setPathData] = useState([]);
+  const [pathData, setPathData] = useState([]); // pathData is still useful for knowing visited locations
+  const bufferDistance = 20; // Buffer distance in meters around the path for spatial analysis
+  const mapRef = useRef(null);
+  const [visitedStreetsGeoJSON, setVisitedStreetsGeoJSON] = useState({ type: 'FeatureCollection', features: [] });
 
   // Effect for handling permissions and starting/stopping location tracking
   useEffect(() => {
@@ -95,6 +102,7 @@ const MapScreen = () => {
     const fetchLocations = async () => {
       try {
         const data = await getLocations();
+        // Store raw path data for later use in identifying visited streets
         setPathData(data.map(loc => ({ latitude: loc.latitude, longitude: loc.longitude })));
       } catch (error) {
         console.error('Error fetching locations:', error);
@@ -105,6 +113,60 @@ const MapScreen = () => {
     fetchLocations();
   }, []); // Empty dependency array means this runs once on mount
 
+
+  // Effect to process pathData and generate GeoJSON for visited streets
+  useEffect(() => {
+    const processPathDataAndGenerateGeoJSON = async () => {
+      const map = mapRef.current;
+      if (map && pathData.length > 0) {
+        // TODO: Implement logic to interact with Mapbox GL to identify
+        console.log('Processing path data to generate visited streets GeoJSON...');
+
+        try {
+          const bounds = await map.getVisibleBounds();
+          console.log('Visible bounds:', bounds);
+
+          // Convert pathData to GeoJSON LineString
+          const coordinates = pathData.map(loc => [loc.longitude, loc.latitude]);
+          const pathLineString = lineString(coordinates);
+
+          // Create a buffer around the path
+          const bufferedPath = buffer(pathLineString, bufferDistance, { units: 'meters' });
+
+          // Query rendered features in the visible bounds, focusing on road layers
+          // Layer IDs might vary depending on the Mapbox style.
+          const queriedFeatures = await map.queryRenderedFeaturesInRect(bounds, null, ['road-street', 'road-secondary', 'road-primary', 'road-highway']);
+          console.log('Queried features:', queriedFeatures);
+
+          const visitedStreetFeatures = [];
+
+          // Iterate through queried features and check for intersection with buffered path
+          for (const feature of queriedFeatures) {
+            // Ensure the feature is a LineString (street segment)
+            if (feature.geometry && feature.geometry.type === 'LineString') {
+              try {
+                // Check if the street segment intersects the buffered path
+                if (intersect(feature, bufferedPath)) {
+                  visitedStreetFeatures.push(feature);
+                }
+              } catch (error) {
+                console.warn('Error checking intersection for feature:', feature, error);
+              }
+            }
+          }
+
+        } catch (error) {
+          console.error('Error querying map features:', error);
+        }
+
+        // Placeholder for generated GeoJSON - replace with actual logic output
+        const generatedGeoJSON = { type: 'FeatureCollection', features: [] };
+        setVisitedStreetsGeoJSON(generatedGeoJSON);
+      }
+    };
+
+    processPathDataAndGenerateGeoJSON();
+  }, [pathData]); // Rerun when pathData changes
 
   // Determine the status text to display
   let statusText = 'Waiting for location...';
@@ -117,28 +179,40 @@ const MapScreen = () => {
   return (
     <View style={styles.container}>
       <Text>{statusText}</Text>
-      <MapView
-        style={{ flex: 1 }}
-        initialRegion={{
-          latitude: 37.78825, // Example latitude (San Francisco)
-          longitude: -122.4324, // Example longitude (San Francisco)
-          latitudeDelta: 0.0922,
-          longitudeDelta: 0.0421,
-        }}
+      <MapboxGL.MapView
+        style={styles.map}
+        ref={mapRef}
+        styleURL={MapboxGL.StyleURL.Street}
       >
-        {/* Render the fetched path data as a Polyline */}
-        <Polyline
-          coordinates={pathData}
-          strokeColor="#FF0000" // Red color for the path
-          strokeWidth={3}
+        <MapboxGL.Camera
+          zoomLevel={14}
+          centerCoordinate={[-122.4324, 37.78825]} // Example coordinates (San Francisco)
+          animationMode={'flyTo'}
+          animationDuration={0}
         />
-      </MapView>
+
+        {/* Visited streets visualization */}
+        <MapboxGL.ShapeSource
+          id="visitedStreetsSource"
+          shape={visitedStreetsGeoJSON}
+        >
+          <MapboxGL.LineLayer
+            id="visitedStreetsLayer"
+            sourceID="visitedStreetsSource"
+            style={{ lineColor: 'green', lineWidth: 4 }}
+          />
+        </MapboxGL.ShapeSource>
+
+      </MapboxGL.MapView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  map: {
     flex: 1,
   },
 });
