@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Text, Platform } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
-import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
-import { database, getLocations } from '../utils/database';
-import { buffer, intersect, lineString, featureCollection } from '@turf/turf';
+import * as turf from '@turf/turf';
+import { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import useLocationTracking from '../hooks/useLocationTracking';
+import { database, getLocations, getRevealedAreas, initDatabase, saveRevealedArea } from '../utils/database';
+const { buffer, intersect, lineString, union, difference } = turf;
 
 // Set Mapbox access token (should be configured in app.json via plugin)
 // MapboxGL.setAccessToken('YOUR_MAPBOX_ACCESS_TOKEN'); // Not needed if using Expo config plugin
@@ -42,60 +42,12 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, ({ data, error }) => {
 });
 
 const MapScreen = () => {
-  const [location, setLocation] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { location, errorMsg } = useLocationTracking();
   const [pathData, setPathData] = useState([]); // pathData is still useful for knowing visited locations
   const bufferDistance = 20; // Buffer distance in meters around the path for spatial analysis
   const mapRef = useRef(null);
   const [visitedStreetsGeoJSON, setVisitedStreetsGeoJSON] = useState({ type: 'FeatureCollection', features: [] });
-
-  // Effect for handling permissions and starting/stopping location tracking
-  useEffect(() => {
-    // Request permissions and start tracking
-    const requestLocationPermission = async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('Permission to access location was denied');
-        return;
-      }
-
-      let { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-      if (backgroundStatus !== 'granted') {
-        setErrorMsg('Permission to access location in background was denied');
-        return;
-      }
-
-      // Check if the task is already defined before attempting to start it
-      const isTaskDefined = await TaskManager.isTaskDefined(LOCATION_TRACKING_TASK_NAME);
-       if (!isTaskDefined) {
-         // This case should ideally not happen if the task is defined outside
-         console.warn('Location tracking task was not defined outside the component.');
-         // If it wasn't, you might want to define it here as a fallback, but the outside definition is preferred.
-       }
-
-      await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
-        accuracy: Location.Accuracy.High,
-        distanceInterval: 10, // Get updates every 10 meters
-        showsBackgroundLocationIndicator: true,
-        foregroundService: {
-          notificationTitle: 'Cartographer',
-          notificationBody: 'Tracking your path in the background',
-          notificationColor: '#007bff',
-        },
-      });
-
-      // Optionally, get the initial location right away
-      let currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation);
-    };
-
-    requestLocationPermission();
-
-    // Cleanup function to stop location updates when the component unmounts
-    return () => {
-      Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME);
-    };
-  }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
+  const [fogGeoJSON, setFogGeoJSON] = useState({ type: 'FeatureCollection', features: [] });
 
   // Effect for fetching existing locations from the database
   useEffect(() => {
@@ -106,32 +58,98 @@ const MapScreen = () => {
         setPathData(data.map(loc => ({ latitude: loc.latitude, longitude: loc.longitude })));
       } catch (error) {
         console.error('Error fetching locations:', error);
-        setErrorMsg('Error loading past locations.');
+        // Optionally, handle error state here if needed
       }
     };
 
     fetchLocations();
   }, []); // Empty dependency array means this runs once on mount
+  // Utility to load turf only once and reuse it
+  let turfModule = null;
+  const getTurf = async () => {
+    if (!turfModule) {
+      turfModule = await import('@turf/turf');
+    }
+    return turfModule;
+  };
+  
+  // Initialize DB and load revealed areas
+  useEffect(() => {
+    const setup = async () => {
+      await initDatabase();
+      // Load all revealed areas
+      const revealedPolygons = await getRevealedAreas();
+      if (revealedPolygons.length > 0) {
+        // Union all revealed polygons
+        const turf = await getTurf();
+        let unioned = revealedPolygons[0];
+        for (let i = 1; i < revealedPolygons.length; i++) {
+          try {
+            unioned = turf.union(unioned, revealedPolygons[i]);
+          } catch (e) {
+            // fallback: skip invalid
+          }
+        }
+        setFogGeoJSON({ type: 'FeatureCollection', features: [unioned] });
+      }
+    };
+    setup();
+  }, []);
 
-
-  // Effect to process pathData and generate GeoJSON for visited streets
+  // Effect to process pathData and generate GeoJSON for visited streets and fog
   useEffect(() => {
     const processPathDataAndGenerateGeoJSON = async () => {
       const map = mapRef.current;
       if (map && pathData.length > 0) {
-        // TODO: Implement logic to interact with Mapbox GL to identify
-        console.log('Processing path data to generate visited streets GeoJSON...');
-
         try {
           const bounds = await map.getVisibleBounds();
-          console.log('Visible bounds:', bounds);
-
+          // bounds: [[minLng, minLat], [maxLng, maxLat]]
+          const minLng = bounds[0][0];
+          const minLat = bounds[0][1];
+          const maxLng = bounds[1][0];
+          const maxLat = bounds[1][1];
+          // Create a rectangular polygon covering the visible map area
+          const fogPolygon = {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: [[
+                [minLng, minLat],
+                [maxLng, minLat],
+                [maxLng, maxLat],
+                [minLng, maxLat],
+                [minLng, minLat]
+              ]]
+            },
+            properties: {}
+          };
           // Convert pathData to GeoJSON LineString
           const coordinates = pathData.map(loc => [loc.longitude, loc.latitude]);
           const pathLineString = lineString(coordinates);
-
           // Create a buffer around the path
           const bufferedPath = buffer(pathLineString, bufferDistance, { units: 'meters' });
+          // Subtract the buffered path from the fog polygon
+          let revealed;
+          try {
+            const turf = await getTurf();
+            revealed = turf.difference(fogPolygon, bufferedPath);
+          } catch (e) {
+            revealed = null;
+          }
+          // Debounce saveRevealedArea to avoid excessive writes
+          if (bufferedPath && bufferedPath.geometry && bufferedPath.geometry.coordinates.length > 0) {
+            if (saveRevealedArea.debounceTimeout) {
+              clearTimeout(saveRevealedArea.debounceTimeout);
+            }
+            saveRevealedArea.debounceTimeout = setTimeout(() => {
+              saveRevealedArea(bufferedPath);
+            }, 1000); // 1 second debounce
+          }
+          // Set fogGeoJSON to the remaining fog (if difference worked), else just the fogPolygon
+          setFogGeoJSON({
+            type: 'FeatureCollection',
+            features: revealed ? [revealed] : [fogPolygon]
+          });
 
           // Query rendered features in the visible bounds, focusing on road layers
           // Layer IDs might vary depending on the Mapbox style.
@@ -186,11 +204,104 @@ const MapScreen = () => {
       >
         <MapboxGL.Camera
           zoomLevel={14}
-          centerCoordinate={[-122.4324, 37.78825]} // Example coordinates (San Francisco)
+          centerCoordinate={[-122.4324, 37.78825]}
           animationMode={'flyTo'}
           animationDuration={0}
         />
-
+        {/* Accuracy indicator */}
+        {location && location.coords.accuracy && (
+          <MapboxGL.ShapeSource
+            id="accuracyCircleSource"
+            shape={{
+              type: 'FeatureCollection',
+              features: [
+                {
+                  type: 'Feature',
+                  geometry: {
+                    type: 'Point',
+                    coordinates: [location.coords.longitude, location.coords.latitude],
+                  },
+                  properties: {},
+                },
+              ],
+            }}
+          >
+            <MapboxGL.CircleLayer
+              id="accuracyCircleLayer"
+              sourceID="accuracyCircleSource"
+              style={{
+                circleRadius: location.coords.accuracy, // meters
+                circleColor: 'rgba(0,122,255,0.15)',
+                circleOpacity: 0.4,
+                circleStrokeWidth: 0,
+              }}
+            />
+          </MapboxGL.ShapeSource>
+        )}
+        {/* Heading indicator (cone) */}
+        {location && location.coords.heading !== undefined && !isNaN(location.coords.heading) && (
+          <MapboxGL.ShapeSource
+            id="headingConeSource"
+            shape={{
+              type: 'FeatureCollection',
+              features: [
+                {
+                  type: 'Feature',
+                  geometry: {
+                    type: 'Polygon',
+                    coordinates: [[
+                      [location.coords.longitude, location.coords.latitude],
+                      // Calculate two points 30 degrees left/right of heading, 0.0005 deg away
+                      [
+                        location.coords.longitude + 0.0005 * Math.cos((location.coords.heading - 30) * Math.PI / 180),
+                        location.coords.latitude + 0.0005 * Math.sin((location.coords.heading - 30) * Math.PI / 180),
+                      ],
+                      [
+                        location.coords.longitude + 0.0005 * Math.cos((location.coords.heading + 30) * Math.PI / 180),
+                        location.coords.latitude + 0.0005 * Math.sin((location.coords.heading + 30) * Math.PI / 180),
+                      ],
+                      [location.coords.longitude, location.coords.latitude],
+                    ]],
+                  },
+                  properties: {},
+                },
+              ],
+            }}
+          >
+            <MapboxGL.FillLayer
+              id="headingConeLayer"
+              sourceID="headingConeSource"
+              style={{
+                fillColor: 'rgba(0,122,255,0.25)',
+                fillOpacity: 0.5,
+              }}
+            />
+          </MapboxGL.ShapeSource>
+        )}
+        {/* Current location marker */}
+        {location && (
+          <MapboxGL.PointAnnotation
+            id="currentLocation"
+            coordinate={[location.coords.longitude, location.coords.latitude]}
+          >
+            <View style={{
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: 'rgba(0,122,255,0.9)',
+              borderWidth: 3,
+              borderColor: 'white',
+            }} />
+          </MapboxGL.PointAnnotation>
+        )}
+        {/* Fog of war overlay */}
+        <MapboxGL.ShapeSource id="fogSource" shape={fogGeoJSON}>
+          <MapboxGL.FillLayer
+            id="fogLayer"
+            sourceID="fogSource"
+            style={{ fillColor: 'rgba(0,0,0,0.5)', fillOpacity: 0.5 }}
+          />
+        </MapboxGL.ShapeSource>
         {/* Visited streets visualization */}
         <MapboxGL.ShapeSource
           id="visitedStreetsSource"
