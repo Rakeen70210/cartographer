@@ -2,16 +2,15 @@ import MapboxGL from '@rnmapbox/maps';
 import { buffer, difference, union } from '@turf/turf';
 import { Feature, FeatureCollection, GeoJsonProperties, Point, Polygon } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import useLocationTracking from '../../hooks/useLocationTracking';
-import { getLocations, getRevealedAreas, initDatabase, saveRevealedArea } from '../../utils/database';
+import { getRevealedAreas, initDatabase, saveRevealedArea } from '../../utils/database';
 
 // Define a more specific type for revealed areas, which are polygons
 type RevealedArea = Feature<Polygon, GeoJsonProperties>;
 
 const MapScreen = () => {
   const { location, errorMsg } = useLocationTracking();
-  const [pathData, setPathData] = useState<{ latitude: number; longitude: number }[]>([]);
   const bufferDistance = 20; // Buffer distance in meters
   const mapRef = useRef<MapboxGL.MapView>(null);
   const [revealedGeoJSON, setRevealedGeoJSON] = useState<Feature<Polygon, GeoJsonProperties> | null>(null);
@@ -35,10 +34,6 @@ const MapScreen = () => {
         }
         setRevealedGeoJSON(unioned);
       }
-
-      // Fetch past locations to reconstruct path if needed, but not for rendering fog
-      const locations = await getLocations();
-      setPathData(locations.map(loc => ({ latitude: loc.latitude, longitude: loc.longitude })));
     };
 
     setup();
@@ -76,7 +71,7 @@ const MapScreen = () => {
       setRevealedGeoJSON(updatedRevealedArea);
       saveRevealedArea(newRevealedArea); // Persist only the new area
     }
-  }, [location]);
+  }, [location, revealedGeoJSON]); // Added revealedGeoJSON to dependency array
 
   // Create the fog overlay by creating a worldwide polygon and subtracting the revealed area
   const worldPolygon: Feature<Polygon> = {
@@ -170,6 +165,8 @@ const MapScreen = () => {
           />
         </MapboxGL.ShapeSource>
       </MapboxGL.MapView>
+      {/* Show status text below the map */}
+      <Text>{statusText}</Text>
     </View>
   );
 };
