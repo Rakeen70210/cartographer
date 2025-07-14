@@ -9,7 +9,12 @@ import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function TabLayout() {
+  console.log('🔄 TabLayout: Component started');
+  
   const colorScheme = useColorScheme();
+  console.log('🎨 TabLayout: Color scheme obtained:', colorScheme);
+  
+  console.log('🏗️ TabLayout: About to render tabs');
 
   return (
     <Tabs
