@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { logger } from './logger';
 
 const database = SQLite.openDatabaseSync('locations.db');
 
@@ -15,24 +16,24 @@ interface RevealedArea {
 }
 
 export const initDatabase = async (): Promise<void> => {
-  console.log('🗄️ Database: Starting database initialization');
+  logger.info('Database: Starting database initialization');
   try {
-    console.log('🗄️ Database: Creating locations table');
+    logger.debug('Database: Creating locations table');
     await database.execAsync(
       'CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, timestamp INTEGER NOT NULL);'
     );
-    console.log('🗄️ Database: Creating revealed_areas table');
+    logger.debug('Database: Creating revealed_areas table');
     await database.execAsync(
       'CREATE TABLE IF NOT EXISTS revealed_areas (id INTEGER PRIMARY KEY NOT NULL, geojson TEXT NOT NULL);'
     );
     
     // Clear existing revealed areas to start fresh (temporary fix for corrupted data)
-    console.log('🧹 Database: Clearing existing revealed areas for fresh start');
+    logger.debug('Database: Clearing existing revealed areas for fresh start');
     await database.execAsync('DELETE FROM revealed_areas;');
     
-    console.log('✅ Database: Database and tables created successfully');
+    logger.success('Database: Database and tables created successfully');
   } catch (error) {
-    console.error('❌ Database: Error initializing database:', error);
+    logger.error('Database: Error initializing database:', error);
     throw error;
   }
 };
@@ -42,7 +43,7 @@ export const getLocations = async (): Promise<Location[]> => {
     const result = await database.getAllAsync('SELECT * FROM locations');
     return result as Location[];
   } catch (error) {
-    console.error('Error fetching locations:', error);
+    logger.error('Error fetching locations:', error);
     return [];
   }
 };
@@ -54,20 +55,20 @@ export const saveRevealedArea = async (geojson: object): Promise<void> => {
       [JSON.stringify(geojson)]
     );
   } catch (error) {
-    console.error('Error saving revealed area:', error);
+    logger.error('Error saving revealed area:', error);
   }
 };
 
 export const getRevealedAreas = async (): Promise<object[]> => {
-  console.log('🗄️ Database: Fetching revealed areas');
+  logger.debug('Database: Fetching revealed areas');
   try {
-    console.log('🗄️ Database: Executing SELECT query for revealed areas');
+    logger.debug('Database: Executing SELECT query for revealed areas');
     const result = await database.getAllAsync('SELECT geojson FROM revealed_areas');
     const areas = (result as RevealedArea[]).map((row: RevealedArea) => JSON.parse(row.geojson));
-    console.log('✅ Database: Retrieved revealed areas count:', areas.length);
+    logger.debug('Database: Retrieved revealed areas count:', areas.length);
     return areas;
   } catch (error) {
-    console.error('❌ Database: Error fetching revealed areas:', error);
+    logger.error('Database: Error fetching revealed areas:', error);
     return [];
   }
 };

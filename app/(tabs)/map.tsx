@@ -7,25 +7,89 @@ import { Feature, FeatureCollection, GeoJsonProperties, Point, Polygon } from 'g
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-// Debug: Enhanced logging for native module loading
-console.log('=== MAP SCREEN DEBUG START ===');
-console.log('MapboxGL object:', MapboxGL);
-console.log('MapboxGL.MapView:', MapboxGL?.MapView);
-console.log('MapboxGL.Camera:', MapboxGL?.Camera);
-console.log('global object exists:', typeof global !== 'undefined');
-console.log('React Native Bridge:', typeof (global as any)?.nativeModules);
-console.log('=== MAP SCREEN DEBUG END ===');
 import useLocationTracking from '../../hooks/useLocationTracking';
 import { getRevealedAreas, initDatabase, saveRevealedArea } from '../../utils/database';
+import { logger } from '../../utils/logger';
 
 // Define a more specific type for revealed areas, which are polygons
 type RevealedArea = Feature<Polygon, GeoJsonProperties>;
 
+/**
+ * Validates if a polygon is valid for processing
+ */
+const isValidPolygon = (polygon: any): boolean => {
+  try {
+    return polygon &&
+           polygon.type === 'Feature' &&
+           polygon.geometry &&
+           polygon.geometry.type === 'Polygon' &&
+           polygon.geometry.coordinates &&
+           polygon.geometry.coordinates.length > 0;
+  } catch (e) {
+    logger.debug('Invalid polygon filtered out:', e);
+    return false;
+  }
+};
+
+/**
+ * Unions multiple polygons into a single polygon
+ */
+const unionPolygons = (polygons: RevealedArea[]): RevealedArea | null => {
+  if (polygons.length === 0) return null;
+  if (polygons.length === 1) return polygons[0];
+
+  logger.debug('Unioning multiple polygons');
+  let unioned: RevealedArea = polygons[0];
+  
+  for (let i = 1; i < polygons.length; i++) {
+    try {
+      // @ts-ignore
+      const result = union(unioned, polygons[i]);
+      if (result) {
+        unioned = result as RevealedArea;
+      } else {
+        logger.warn('Union returned null, skipping polygon', i);
+      }
+    } catch (e) {
+      logger.error('Error unioning polygons:', e);
+      logger.debug('Problematic polygon:', polygons[i]);
+      // Continue with the current unioned result, skip the problematic polygon
+    }
+  }
+  
+  logger.success('Polygon union completed');
+  return unioned;
+};
+
+/**
+ * Loads and processes revealed areas from database
+ */
+const loadRevealedAreas = async (): Promise<RevealedArea | null> => {
+  logger.debug('Loading revealed areas');
+  const revealedPolygons = await getRevealedAreas() as RevealedArea[];
+  logger.debug('Revealed polygons count:', revealedPolygons.length);
+  
+  if (revealedPolygons.length === 0) {
+    return null;
+  }
+
+  logger.debug('Starting polygon union operations');
+  const validPolygons = revealedPolygons.filter(isValidPolygon);
+  logger.debug('Valid polygons count:', validPolygons.length);
+  
+  if (validPolygons.length === 0) {
+    logger.warn('No valid polygons found');
+    return null;
+  }
+
+  return unionPolygons(validPolygons);
+};
+
 const MapScreen = () => {
-  console.log('🗺️ MapScreen: Component started');
+  logger.debug('MapScreen: Component started');
   
   const { location, errorMsg } = useLocationTracking();
-  console.log('🗺️ MapScreen: Location state - location:', !!location, 'error:', errorMsg);
+  logger.debug('MapScreen: Location state - location:', !!location, 'error:', errorMsg);
   
   const bufferDistance = 20; // Buffer distance in meters
   const mapRef = useRef<MapboxGL.MapView>(null);
@@ -33,151 +97,114 @@ const MapScreen = () => {
 
   // Effect for initializing DB and fetching existing data
   useEffect(() => {
-    console.log('⚡ MapScreen: Database setup useEffect triggered');
+    logger.debug('MapScreen: Database setup useEffect triggered');
     
     const setup = async () => {
-      console.log('🗄️ MapScreen: Starting database initialization');
+      logger.info('MapScreen: Starting database initialization');
       try {
         await initDatabase();
-        console.log('✅ MapScreen: Database initialized successfully');
+        logger.success('MapScreen: Database initialized successfully');
 
-        console.log('🗄️ MapScreen: Loading revealed areas');
-        // Load all revealed areas and union them into a single polygon
-        const revealedPolygons = await getRevealedAreas() as RevealedArea[];
-        console.log('🗄️ MapScreen: Revealed polygons count:', revealedPolygons.length);
-        
-        if (revealedPolygons.length > 0) {
-          console.log('🔧 MapScreen: Starting polygon union operations');
-          
-          // Filter out any invalid polygons
-          const validPolygons = revealedPolygons.filter(polygon => {
-            try {
-              return polygon &&
-                     polygon.type === 'Feature' &&
-                     polygon.geometry &&
-                     polygon.geometry.type === 'Polygon' &&
-                     polygon.geometry.coordinates &&
-                     polygon.geometry.coordinates.length > 0;
-            } catch (e) {
-              console.log('🚫 MapScreen: Invalid polygon filtered out:', e);
-              return false;
-            }
-          });
-          
-          console.log('✅ MapScreen: Valid polygons count:', validPolygons.length);
-          
-          if (validPolygons.length === 0) {
-            console.log('⚠️ MapScreen: No valid polygons found');
-            return;
-          }
-          
-          if (validPolygons.length === 1) {
-            // If only one polygon, use it directly
-            console.log('✅ MapScreen: Single polygon, using directly');
-            setRevealedGeoJSON(validPolygons[0]);
-          } else {
-            // Union multiple polygons
-            console.log('🔧 MapScreen: Unioning multiple polygons');
-            let unioned: RevealedArea = validPolygons[0];
-            for (let i = 1; i < validPolygons.length; i++) {
-              try {
-                // @ts-ignore
-                const result = union(unioned, validPolygons[i]);
-                if (result) {
-                  unioned = result as RevealedArea;
-                } else {
-                  console.log('⚠️ MapScreen: Union returned null, skipping polygon', i);
-                }
-              } catch (e) {
-                console.error("❌ MapScreen: Error unioning polygons:", e);
-                console.log('🔍 MapScreen: Problematic polygon:', validPolygons[i]);
-                // Continue with the current unioned result, skip the problematic polygon
-              }
-            }
-            console.log('✅ MapScreen: Polygon union completed');
-            setRevealedGeoJSON(unioned);
-          }
+        const revealedArea = await loadRevealedAreas();
+        if (revealedArea) {
+          setRevealedGeoJSON(revealedArea);
         }
       } catch (error) {
-        console.error('❌ MapScreen: Error in database setup:', error);
+        logger.error('MapScreen: Error in database setup:', error);
       }
     };
 
     setup().catch(error => {
-      console.error('❌ MapScreen: Error in setup promise:', error);
+      logger.error('MapScreen: Error in setup promise:', error);
     });
   }, []);
 
   // Keep track of last processed location to prevent processing same location repeatedly
   const lastProcessedLocationRef = useRef<{lat: number, lon: number} | null>(null);
 
+  /**
+   * Checks if the current location is a duplicate of the last processed location
+   */
+  const isDuplicateLocation = (lat: number, lon: number): boolean => {
+    const lastProcessed = lastProcessedLocationRef.current;
+    return !!lastProcessed &&
+           Math.abs(lastProcessed.lat - lat) < 0.00001 &&
+           Math.abs(lastProcessed.lon - lon) < 0.00001;
+  };
+
+  /**
+   * Creates a new revealed area from the current location
+   */
+  const createRevealedArea = (lat: number, lon: number): RevealedArea => {
+    const newPoint: Feature<Point> = {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Point',
+        coordinates: [lon, lat]
+      }
+    };
+
+    logger.debug('Creating buffer around new point');
+    return buffer(newPoint, bufferDistance, { units: 'meters' }) as RevealedArea;
+  };
+
+  /**
+   * Merges new revealed area with existing revealed area
+   */
+  const mergeRevealedAreas = (newArea: RevealedArea, existingArea: RevealedArea | null): RevealedArea => {
+    if (!existingArea) {
+      logger.success('First revealed area created');
+      return newArea;
+    }
+
+    try {
+      logger.debug('Merging with existing revealed area');
+      // Create a FeatureCollection with both polygons for union
+      const featureCollection: FeatureCollection<Polygon> = {
+        type: 'FeatureCollection',
+        features: [existingArea, newArea]
+      };
+      
+      // Use union on FeatureCollection
+      const unioned = union(featureCollection);
+      if (unioned) {
+        logger.success('Areas successfully merged');
+        return unioned as RevealedArea;
+      } else {
+        logger.warn('Union returned null, keeping existing area');
+        return existingArea;
+      }
+    } catch (e) {
+      logger.error('Error unioning new area:', e);
+      return existingArea; // fallback to old one
+    }
+  };
+
   // Effect to process new locations and update the revealed area
   useEffect(() => {
-    console.log('⚡ MapScreen: Location effect triggered - location:', !!location, 'coords:', !!location?.coords);
+    logger.debug('Location effect triggered - location:', !!location, 'coords:', !!location?.coords);
     
     if (location && location.coords) {
       const currentLat = location.coords.latitude;
       const currentLon = location.coords.longitude;
       
       // Check if this is the same location we just processed (to prevent infinite loops)
-      const lastProcessed = lastProcessedLocationRef.current;
-      if (lastProcessed &&
-          Math.abs(lastProcessed.lat - currentLat) < 0.00001 &&
-          Math.abs(lastProcessed.lon - currentLon) < 0.00001) {
-        console.log('⏭️ MapScreen: Skipping duplicate location processing');
+      if (isDuplicateLocation(currentLat, currentLon)) {
+        logger.debug('Skipping duplicate location processing');
         return;
       }
       
-      console.log('📍 MapScreen: Processing new location:', currentLat, currentLon);
+      logger.info('Processing new location:', currentLat, currentLon);
       lastProcessedLocationRef.current = { lat: currentLat, lon: currentLon };
       
-      const newPoint: Feature<Point> = {
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'Point',
-          coordinates: [currentLon, currentLat]
-        }
-      };
+      const newRevealedArea = createRevealedArea(currentLat, currentLon);
+      const updatedRevealedArea = mergeRevealedAreas(newRevealedArea, revealedGeoJSON);
 
-      console.log('🔵 MapScreen: Creating buffer around new point');
-      // Create a buffer around the new point
-      const newRevealedArea = buffer(newPoint, bufferDistance, { units: 'meters' }) as RevealedArea;
-
-      console.log('🔧 MapScreen: Unioning with existing revealed area');
-      // Union the new area with the existing revealed area
-      let updatedRevealedArea: RevealedArea;
-      if (revealedGeoJSON) {
-        try {
-          console.log('🔗 MapScreen: Merging with existing revealed area');
-          // Create a FeatureCollection with both polygons for union
-          const featureCollection: FeatureCollection<Polygon> = {
-            type: 'FeatureCollection',
-            features: [revealedGeoJSON, newRevealedArea]
-          };
-          
-          // Use union on FeatureCollection
-          const unioned = union(featureCollection);
-          if (unioned) {
-            console.log('✅ MapScreen: Areas successfully merged');
-            updatedRevealedArea = unioned as RevealedArea;
-          } else {
-            console.log('⚠️ MapScreen: Union returned null, keeping existing area');
-            updatedRevealedArea = revealedGeoJSON;
-          }
-        } catch (e) {
-          console.error("❌ MapScreen: Error unioning new area:", e);
-          updatedRevealedArea = revealedGeoJSON; // fallback to old one
-        }
-      } else {
-        updatedRevealedArea = newRevealedArea;
-        console.log('✅ MapScreen: First revealed area created');
-      }
-
-      console.log('🔄 MapScreen: Updating revealed GeoJSON state');
+      logger.debug('Updating revealed GeoJSON state');
       setRevealedGeoJSON(updatedRevealedArea);
       
-      console.log('🗄️ MapScreen: Saving new revealed area to database');
+      logger.debug('Saving new revealed area to database');
       saveRevealedArea(newRevealedArea); // Persist only the new area
     }
   }, [location?.coords?.latitude, location?.coords?.longitude]); // Only depend on coordinates, not revealedGeoJSON
@@ -200,54 +227,65 @@ const MapScreen = () => {
     },
   };
 
-  const fogFeatures: Feature<Polygon | import('geojson').MultiPolygon>[] = [];
-  if (revealedGeoJSON) {
-    try {
-      console.log('🌫️ MapScreen: Creating fog overlay with difference operation');
-      console.log('🌫️ MapScreen: World polygon type:', worldPolygon.geometry.type);
-      console.log('🌫️ MapScreen: Revealed area type:', revealedGeoJSON.geometry.type);
+  /**
+   * Creates fog overlay features based on revealed areas
+   */
+  const createFogFeatures = (): Feature<Polygon | import('geojson').MultiPolygon>[] => {
+    const fogFeatures: Feature<Polygon | import('geojson').MultiPolygon>[] = [];
+    
+    if (revealedGeoJSON) {
+      try {
+        logger.debug('Creating fog overlay with difference operation');
+        logger.debug('World polygon type:', worldPolygon.geometry.type);
+        logger.debug('Revealed area type:', revealedGeoJSON.geometry.type);
 
-      // Defensive: Check if revealedGeoJSON is a valid polygon with coordinates
-      if (
-        revealedGeoJSON.geometry &&
-        revealedGeoJSON.geometry.type === 'Polygon' &&
-        Array.isArray(revealedGeoJSON.geometry.coordinates) &&
-        revealedGeoJSON.geometry.coordinates.length > 0
-      ) {
-        // Try actual difference operation, but catch turf errors
-        let fogPolygon;
-        // Turf difference API is incompatible, fallback to world polygon as fog
-        console.log('⚠️ MapScreen: Skipping fog difference, using world polygon');
-        fogFeatures.push(worldPolygon);
-      } else {
-        console.log('🚫 MapScreen: revealedGeoJSON is not a valid polygon, using world polygon');
+        // Defensive: Check if revealedGeoJSON is a valid polygon with coordinates
+        if (
+          revealedGeoJSON.geometry &&
+          revealedGeoJSON.geometry.type === 'Polygon' &&
+          Array.isArray(revealedGeoJSON.geometry.coordinates) &&
+          revealedGeoJSON.geometry.coordinates.length > 0
+        ) {
+          // Try actual difference operation, but catch turf errors
+          // Turf difference API is incompatible, fallback to world polygon as fog
+          logger.debug('Skipping fog difference, using world polygon');
+          fogFeatures.push(worldPolygon);
+        } else {
+          logger.debug('revealedGeoJSON is not a valid polygon, using world polygon');
+          fogFeatures.push(worldPolygon);
+        }
+      } catch (e) {
+        logger.error('Error creating fog overlay:', e);
+        logger.debug('Falling back to world polygon');
         fogFeatures.push(worldPolygon);
       }
-    } catch (e) {
-      console.error('❌ MapScreen: Error creating fog overlay:', e);
-      console.log('🔄 MapScreen: Falling back to world polygon');
+    } else {
+      logger.debug('No revealed area, using full world polygon');
       fogFeatures.push(worldPolygon);
     }
-  } else {
-    console.log('🌫️ MapScreen: No revealed area, using full world polygon');
-    fogFeatures.push(worldPolygon);
-  }
+
+    return fogFeatures;
+  };
 
   const fogGeoJSON: FeatureCollection<Polygon | import('geojson').MultiPolygon> = {
     type: 'FeatureCollection',
-    features: fogFeatures,
+    features: createFogFeatures(),
   };
 
+  /**
+   * Generates status text based on current location and error state
+   */
+  const getStatusText = (): string => {
+    if (errorMsg) {
+      return errorMsg;
+    } else if (location) {
+      return `Lat: ${location.coords.latitude.toFixed(5)}, Lon: ${location.coords.longitude.toFixed(5)}`;
+    }
+    return 'Waiting for location...';
+  };
 
-  let statusText = 'Waiting for location...';
-  if (errorMsg) {
-    statusText = errorMsg;
-  } else if (location) {
-    statusText = `Lat: ${location.coords.latitude.toFixed(5)}, Lon: ${location.coords.longitude.toFixed(5)}`;
-  }
-
-  console.log('🎨 MapScreen: About to render - statusText:', statusText);
-  console.log('🎨 MapScreen: Render state - location:', !!location, 'revealedGeoJSON:', !!revealedGeoJSON, 'errorMsg:', errorMsg);
+  logger.debug('About to render - statusText:', getStatusText());
+  logger.debug('Render state - location:', !!location, 'revealedGeoJSON:', !!revealedGeoJSON, 'errorMsg:', errorMsg);
 
   return (
     <View style={styles.container}>
@@ -258,13 +296,13 @@ const MapScreen = () => {
         logoEnabled={false}
         attributionEnabled={false}
         onDidFinishLoadingMap={() => {
-          console.log('✅ MapScreen: Map finished loading');
+          logger.success('Map finished loading');
         }}
         onDidFailLoadingMap={() => {
-          console.error('❌ MapScreen: Map failed to load');
+          logger.error('Map failed to load');
         }}
         onRegionDidChange={() => {
-          console.log('🗺️ MapScreen: Region changed');
+          logger.debug('Region changed');
         }}
       >
         <MapboxGL.Camera
@@ -309,7 +347,7 @@ const MapScreen = () => {
         </MapboxGL.ShapeSource>
       </MapboxGL.MapView>
       {/* Show status text below the map */}
-      <Text>{statusText}</Text>
+      <Text>{getStatusText()}</Text>
     </View>
   );
 };
