@@ -1,11 +1,10 @@
 // Set Mapbox access token for native module
 import MapboxGL from '@rnmapbox/maps';
-MapboxGL.setAccessToken('pk.eyJ1IjoicmFsaWtzNzAyMTAiLCJhIjoiY21icTM1cm4zMGFqNzJxcHdrbHEzY3hkYiJ9.o-DnPquzV98xBU8SMuenjg');
 import { buffer, union } from '@turf/turf';
-import difference from '@turf/difference';
 import { Feature, FeatureCollection, GeoJsonProperties, Point, Polygon } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+MapboxGL.setAccessToken('pk.eyJ1IjoicmFsaWtzNzAyMTAiLCJhIjoiY21icTM1cm4zMGFqNzJxcHdrbHEzY3hkYiJ9.o-DnPquzV98xBU8SMuenjg');
 
 import useLocationTracking from '../../hooks/useLocationTracking';
 import { getRevealedAreas, initDatabase, saveRevealedArea } from '../../utils/database';
@@ -93,7 +92,10 @@ const MapScreen = () => {
   
   const bufferDistance = 20; // Buffer distance in meters
   const mapRef = useRef<MapboxGL.MapView>(null);
+  const cameraRef = useRef<MapboxGL.Camera>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [revealedGeoJSON, setRevealedGeoJSON] = useState<Feature<Polygon, GeoJsonProperties> | null>(null);
+  const hasCenteredRef = useRef(false);
 
   // Effect for initializing DB and fetching existing data
   useEffect(() => {
@@ -118,6 +120,26 @@ const MapScreen = () => {
       logger.error('MapScreen: Error in setup promise:', error);
     });
   }, []);
+
+  // Effect to center camera on user location once when map loads
+  useEffect(() => {
+    if (
+      mapLoaded &&
+      location &&
+      location.coords &&
+      cameraRef.current &&
+      !hasCenteredRef.current
+    ) {
+      cameraRef.current.setCamera({
+        centerCoordinate: [location.coords.longitude, location.coords.latitude],
+        zoomLevel: 17,
+        animationMode: 'flyTo',
+        animationDuration: 2000,
+      });
+      hasCenteredRef.current = true;
+      logger.info('Camera centered on user location at initial load');
+    }
+  }, [mapLoaded, location]);
 
   // Keep track of last processed location to prevent processing same location repeatedly
   const lastProcessedLocationRef = useRef<{lat: number, lon: number} | null>(null);
@@ -297,20 +319,18 @@ const MapScreen = () => {
         attributionEnabled={false}
         onDidFinishLoadingMap={() => {
           logger.success('Map finished loading');
-        }}
-        onDidFailLoadingMap={() => {
-          logger.error('Map failed to load');
+          setMapLoaded(true);
         }}
         onRegionDidChange={() => {
           logger.debug('Region changed');
         }}
       >
         <MapboxGL.Camera
+          ref={cameraRef}
           zoomLevel={16}
           centerCoordinate={location ? [location.coords.longitude, location.coords.latitude] : [-111.65926740290008, 33.35623807637663]}
           animationMode={'flyTo'}
           animationDuration={2000}
-          followUserLocation={true}
         />
 
         {/* Current location marker */}
