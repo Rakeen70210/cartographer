@@ -1,12 +1,13 @@
-import React from 'react';
 import { render } from '@testing-library/react-native';
+import React from 'react';
+import { Text } from 'react-native';
 import { ThemedView } from '../components/ThemedView';
 
 describe('ThemedView', () => {
   it('renders children correctly', () => {
     const { getByText } = render(
       <ThemedView>
-        <>{'Test View'}</>
+        <Text>Test View</Text>
       </ThemedView>
     );
     expect(getByText('Test View')).toBeTruthy();

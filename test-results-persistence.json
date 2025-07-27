@@ -1,0 +1,156 @@
+{
+  "testDate": "2025-07-26T04:15:45.677Z",
+  "scenarios": [
+    {
+      "id": "REQ_2.1",
+      "title": "Previously revealed areas load correctly from database on app startup",
+      "status": "PENDING",
+      "notes": "",
+      "issues": []
+    },
+    {
+      "id": "REQ_2.2",
+      "title": "Fog calculation works with loaded revealed areas across different viewports",
+      "status": "PENDING",
+      "notes": "",
+      "issues": []
+    },
+    {
+      "id": "REQ_2.3",
+      "title": "New revealed areas merge properly with existing areas and update fog",
+      "status": "PENDING",
+      "notes": "",
+      "issues": []
+    },
+    {
+      "id": "REQ_2.4",
+      "title": "App restart persistence and data consistency",
+      "status": "PENDING",
+      "notes": "",
+      "issues": []
+    }
+  ],
+  "performance": [
+    {
+      "id": "PERF_1",
+      "title": "Database operations performance",
+      "metrics": [
+        {
+          "name": "App startup time with large revealed area dataset",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        },
+        {
+          "name": "Fog calculation time with complex geometries",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        },
+        {
+          "name": "Memory usage during extended exploration",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        },
+        {
+          "name": "Battery impact of location tracking and fog updates",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        }
+      ]
+    },
+    {
+      "id": "PERF_2",
+      "title": "Large dataset handling",
+      "metrics": [
+        {
+          "name": "Loading time with 100+ revealed area polygons",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        },
+        {
+          "name": "Union operation performance with complex geometries",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        },
+        {
+          "name": "Viewport-based fog calculation efficiency",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        },
+        {
+          "name": "Database query performance with large datasets",
+          "value": null,
+          "unit": "",
+          "status": "PENDING"
+        }
+      ]
+    }
+  ],
+  "integrity": [
+    {
+      "id": "INT_1",
+      "title": "Geometry validation",
+      "checks": [
+        {
+          "name": "All loaded polygons have valid coordinates",
+          "status": "PENDING",
+          "details": ""
+        },
+        {
+          "name": "Polygons are properly closed (first == last coordinate)",
+          "status": "PENDING",
+          "details": ""
+        },
+        {
+          "name": "No self-intersecting polygons",
+          "status": "PENDING",
+          "details": ""
+        },
+        {
+          "name": "Coordinate values within valid ranges (-180 to 180, -90 to 90)",
+          "status": "PENDING",
+          "details": ""
+        }
+      ]
+    },
+    {
+      "id": "INT_2",
+      "title": "Data consistency",
+      "checks": [
+        {
+          "name": "Revealed areas match between database and memory",
+          "status": "PENDING",
+          "details": ""
+        },
+        {
+          "name": "Union operations produce valid geometries",
+          "status": "PENDING",
+          "details": ""
+        },
+        {
+          "name": "No data loss during app lifecycle transitions",
+          "status": "PENDING",
+          "details": ""
+        },
+        {
+          "name": "Proper error handling for corrupted data",
+          "status": "PENDING",
+          "details": ""
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalTests": 4,
+    "passed": 0,
+    "failed": 0,
+    "pending": 4,
+    "overallStatus": "PENDING"
+  }
+}
