@@ -6,15 +6,15 @@
   - Create database utility functions for CRUD operations on new tables
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [ ] 2. Implement core statistics calculation utilities
-  - [ ] 2.1 Create distance calculation service
+- [x] 2. Implement core statistics calculation utilities
+  - [x] 2.1 Create distance calculation service
     - Implement haversine formula for calculating distances between GPS coordinates
     - Create function to calculate total distance traveled from location history
     - Add unit conversion utilities (meters to miles/kilometers)
     - Write unit tests for distance calculations with various coordinate sets
     - _Requirements: 1.1, 1.3, 1.4_
 
-  - [ ] 2.2 Create world exploration percentage calculator
+  - [x] 2.2 Create world exploration percentage calculator
     - Implement function to calculate total area of revealed polygons using Turf.js
     - Create Earth surface area constant and calculation utilities
     - Implement percentage calculation with proper precision formatting
@@ -22,7 +22,7 @@
     - Write unit tests for area calculations with sample GeoJSON data
     - _Requirements: 2.1, 2.2, 2.6, 2.7_
 
-  - [ ] 2.3 Create geographic region identification service
+  - [x] 2.3 Create geographic region identification service
     - Implement reverse geocoding function using device location services
     - Create functions to extract country, state, and city from coordinates
     - Implement caching mechanism for geocoding results to reduce API calls
