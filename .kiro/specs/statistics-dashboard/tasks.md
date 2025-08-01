@@ -30,8 +30,8 @@
     - Write unit tests for geocoding with mock coordinate data
     - _Requirements: 3.1, 3.2, 3.3, 3.7, 6.1, 6.3_
 
-- [ ] 3. Implement hierarchical geographic breakdown calculations
-  - [ ] 3.1 Create geographic hierarchy data structures
+- [x] 3. Implement hierarchical geographic breakdown calculations
+  - [x] 3.1 Create geographic hierarchy data structures
     - Define TypeScript interfaces for hierarchical geographic data
     - Implement functions to build tree structure from flat location data
     - Create utilities for calculating exploration percentages at each hierarchy level
@@ -39,13 +39,24 @@
     - Write unit tests for hierarchy building with sample location data
     - _Requirements: 2.3, 2.4, 2.5, 2.8_
 
-  - [ ] 3.2 Implement region boundary and area calculations
+  - [x] 3.2 Implement region boundary and area calculations
     - Create service to fetch or cache geographic boundary data for regions
     - Implement area calculation for countries, states, and cities using boundary polygons
     - Create intersection calculations between revealed areas and region boundaries
     - Add percentage calculation for exploration within each geographic region
     - Write unit tests for boundary calculations with sample GeoJSON boundaries
     - _Requirements: 2.3, 2.4, 2.5, 2.9_
+
+- [ ] 3.3 Integrate real geographic API data sources
+  - Research and evaluate geographic data APIs (OpenStreetMap Nominatim, Natural Earth, REST Countries)
+  - Implement API integration service for fetching real country, state, and city boundary data
+  - Create data transformation utilities to convert API responses to standardized GeoJSON format
+  - Add API rate limiting, caching, and error handling for external service calls
+  - Implement fallback mechanisms when API services are unavailable
+  - Replace simplified boundary data with real geographic boundaries from APIs
+  - Add configuration for API endpoints and authentication if required
+  - Write integration tests with real API calls and mock fallback scenarios
+  - _Requirements: 2.3, 2.4, 2.5, 2.9, 6.1, 6.2_
 
 - [ ] 4. Create remaining regions calculation service
   - Implement functions to calculate total available countries, states, and cities
