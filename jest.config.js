@@ -7,7 +7,7 @@ module.exports = {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(expo|@expo|react-native|@react-native|@rnmapbox|@turf|react-native-reanimated|react-native-gesture-handler|@react-navigation|expo-symbols|expo-blur|expo-router)/)',
+    'node_modules/(?!(expo|@expo|react-native|@react-native|@rnmapbox|@turf|react-native-reanimated|react-native-gesture-handler|@react-navigation|expo-symbols|expo-blur|expo-router|expo-sqlite)/)',
   ],
   testMatch: [
     '**/__tests__/**/*.(js|jsx|ts|tsx)',
