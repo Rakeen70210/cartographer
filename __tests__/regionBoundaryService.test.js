@@ -17,6 +17,18 @@ jest.mock('../utils/database', () => ({
   getAllRegionBoundaries: jest.fn()
 }));
 
+// Mock the geographic API service
+jest.mock('../utils/geographicApiService', () => ({
+  geographicApiService: {
+    getCountryBoundary: jest.fn(),
+    getStateBoundary: jest.fn(),
+    getCityBoundary: jest.fn()
+  },
+  transformToStandardGeoJSON: jest.fn(),
+  validateGeoJSONGeometry: jest.fn(),
+  getTotalRegionCounts: jest.fn()
+}));
+
 // Mock the logger
 jest.mock('../utils/logger', () => ({
   logger: {
@@ -77,33 +89,36 @@ describe('RegionBoundaryService', () => {
   ];
 
   describe('getRegionBoundaryData', () => {
-    test('should return cached boundary data when available', async () => {
-      const { getRegionBoundary } = require('../utils/database');
+    test('should return API boundary data when available', async () => {
+      const { geographicApiService, validateGeoJSONGeometry } = require('../utils/geographicApiService');
       
-      const cachedBoundary = {
-        id: 1,
-        region_type: 'country',
-        region_name: 'United States',
-        boundary_geojson: JSON.stringify(samplePolygon),
-        area_km2: 1000,
-        timestamp: Date.now()
+      const apiResponse = {
+        type: 'country',
+        name: 'TestCountry',
+        geometry: samplePolygon,
+        area: 1000,
+        source: 'api'
       };
 
-      getRegionBoundary.mockResolvedValue(cachedBoundary);
+      geographicApiService.getCountryBoundary.mockResolvedValue(apiResponse);
+      validateGeoJSONGeometry.mockReturnValue(true);
 
-      const result = await getRegionBoundaryData('country', 'United States');
+      const result = await getRegionBoundaryData('country', 'TestCountry');
 
       expect(result).toBeDefined();
-      expect(result.name).toBe('United States');
+      expect(result.name).toBe('TestCountry');
       expect(result.type).toBe('country');
       expect(result.area).toBe(1000);
       expect(result.geometry).toEqual(samplePolygon);
+      expect(result.source).toBe('api');
     });
 
-    test('should use simplified boundary data when not cached', async () => {
-      const { getRegionBoundary, saveRegionBoundary } = require('../utils/database');
+    test('should use fallback boundary data when API fails', async () => {
+      const { geographicApiService, validateGeoJSONGeometry } = require('../utils/geographicApiService');
+      const { saveRegionBoundary } = require('../utils/database');
       
-      getRegionBoundary.mockResolvedValue(null);
+      geographicApiService.getCountryBoundary.mockResolvedValue(null);
+      validateGeoJSONGeometry.mockReturnValue(true);
       saveRegionBoundary.mockResolvedValue();
 
       const result = await getRegionBoundaryData('country', 'United States');
@@ -111,13 +126,17 @@ describe('RegionBoundaryService', () => {
       expect(result).toBeDefined();
       expect(result.name).toBe('United States');
       expect(result.type).toBe('country');
+      expect(result.source).toBe('fallback');
+      expect(result.geometry.type).toBe('Polygon');
       expect(saveRegionBoundary).toHaveBeenCalled();
     });
 
     test('should create approximate boundary for unknown regions', async () => {
-      const { getRegionBoundary, saveRegionBoundary } = require('../utils/database');
+      const { geographicApiService, validateGeoJSONGeometry } = require('../utils/geographicApiService');
+      const { saveRegionBoundary } = require('../utils/database');
       
-      getRegionBoundary.mockResolvedValue(null);
+      geographicApiService.getCountryBoundary.mockResolvedValue(null);
+      validateGeoJSONGeometry.mockReturnValue(false); // No fallback data available
       saveRegionBoundary.mockResolvedValue();
 
       const result = await getRegionBoundaryData('country', 'Unknown Country');
@@ -126,16 +145,19 @@ describe('RegionBoundaryService', () => {
       expect(result.name).toBe('Unknown Country');
       expect(result.type).toBe('country');
       expect(result.geometry.type).toBe('Polygon');
+      expect(result.source).toBe('fallback');
       expect(saveRegionBoundary).toHaveBeenCalled();
     });
 
     test('should handle database errors gracefully', async () => {
-      const { getRegionBoundary } = require('../utils/database');
+      const { geographicApiService, validateGeoJSONGeometry } = require('../utils/geographicApiService');
       
-      getRegionBoundary.mockRejectedValue(new Error('Database error'));
+      geographicApiService.getCountryBoundary.mockRejectedValue(new Error('API error'));
+      validateGeoJSONGeometry.mockReturnValue(false); // No fallback data
 
       const result = await getRegionBoundaryData('country', 'Test Country');
 
+      // Should return null when all sources fail and no fallback data
       expect(result).toBeNull();
     });
   });
@@ -299,19 +321,15 @@ describe('RegionBoundaryService', () => {
     });
 
     test('should handle regions without boundary data', async () => {
-      const { getRegionBoundary } = require('../utils/database');
-      
       const regions = [
         { type: 'country', name: 'Unknown Country' }
       ];
-
-      getRegionBoundary.mockResolvedValue(null);
 
       const results = await calculateMultipleRegionExploration(regions, sampleRevealedAreas);
 
       expect(results).toHaveLength(1);
       expect(results[0].regionName).toBe('Unknown Country');
-      expect(results[0].totalArea).toBeGreaterThan(0); // Should have approximate boundary
+      expect(results[0].totalArea).toBe(0); // No boundary data available
       expect(results[0].explorationPercentage).toBe(0); // No intersections
     });
   });

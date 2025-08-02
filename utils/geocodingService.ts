@@ -135,7 +135,7 @@ export const reverseGeocode = async (
 };
 
 /**
- * Perform API-based reverse geocoding using Expo Location
+ * Perform API-based reverse geocoding using multiple sources with fallback
  * @param latitude Latitude coordinate
  * @param longitude Longitude coordinate
  * @param timeout Timeout in milliseconds
@@ -152,7 +152,19 @@ const performApiGeocoding = async (
     }, timeout);
 
     try {
-      // Request location permissions if not already granted
+      // First try the geographic API service (Nominatim)
+      try {
+        const nominatimResult = await tryNominatimGeocoding(latitude, longitude);
+        if (nominatimResult) {
+          clearTimeout(timeoutId);
+          resolve(nominatimResult);
+          return;
+        }
+      } catch (nominatimError) {
+        logger.debug('GeocodingService: Nominatim geocoding failed, trying Expo Location');
+      }
+
+      // Fallback to Expo Location service
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         clearTimeout(timeoutId);
@@ -160,7 +172,7 @@ const performApiGeocoding = async (
         return;
       }
 
-      // Perform reverse geocoding
+      // Perform reverse geocoding with Expo Location
       const result = await Location.reverseGeocodeAsync({
         latitude,
         longitude
@@ -192,6 +204,58 @@ const performApiGeocoding = async (
       reject(error);
     }
   });
+};
+
+/**
+ * Try geocoding using Nominatim API through the geographic service
+ */
+const tryNominatimGeocoding = async (
+  latitude: number,
+  longitude: number
+): Promise<GeographicRegion | null> => {
+  try {
+    // Check connectivity first
+    const isOnline = await geographicApiService.checkConnectivity();
+    if (!isOnline) {
+      return null;
+    }
+
+    // Use Nominatim for reverse geocoding
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Cartographer/1.0 (https://github.com/cartographer-app)'
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (!data || !data.address) {
+      return null;
+    }
+
+    const address = data.address;
+    
+    return {
+      country: address.country || undefined,
+      countryCode: address.country_code?.toUpperCase() || undefined,
+      state: address.state || address.region || address.province || undefined,
+      stateCode: address.state_code || undefined,
+      city: address.city || address.town || address.village || undefined,
+      region: address.county || address.district || undefined,
+      district: address.suburb || address.neighbourhood || undefined
+    };
+
+  } catch (error) {
+    logger.debug('GeocodingService: Nominatim reverse geocoding failed:', error);
+    return null;
+  }
 };
 
 /**

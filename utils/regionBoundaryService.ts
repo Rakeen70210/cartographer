@@ -1,14 +1,20 @@
 import * as turf from '@turf/turf';
 import {
-  getAllRegionBoundaries,
-  getRegionBoundary,
-  RegionBoundary,
-  saveRegionBoundary
+    getAllRegionBoundaries,
+    RegionBoundary,
+    saveRegionBoundary
 } from './database';
+import {
+    BoundaryApiResponse,
+    geographicApiService,
+    getTotalRegionCounts,
+    validateGeoJSONGeometry
+} from './geographicApiService';
 import { logger } from './logger';
 
 /**
  * Service for managing geographic region boundaries and area calculations
+ * Now integrated with real geographic API data sources
  */
 
 export interface BoundaryData {
@@ -18,6 +24,7 @@ export interface BoundaryData {
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
   area: number; // in square kilometers
   centroid: [number, number]; // [longitude, latitude]
+  source?: 'api' | 'cache' | 'fallback';
 }
 
 export interface RegionExplorationData {
@@ -30,10 +37,10 @@ export interface RegionExplorationData {
 }
 
 /**
- * Simplified boundary data for common regions
- * In a real implementation, this would be fetched from a geographic API
+ * Fallback boundary data for common regions when APIs are unavailable
+ * This serves as offline backup data
  */
-const SIMPLIFIED_BOUNDARIES: Record<string, any> = {
+const FALLBACK_BOUNDARIES: Record<string, any> = {
   'United States': {
     type: 'Polygon',
     coordinates: [[
@@ -67,52 +74,68 @@ const SIMPLIFIED_BOUNDARIES: Record<string, any> = {
 };
 
 /**
- * Fetches or creates simplified boundary data for a region
+ * Fetches boundary data for a region using real geographic APIs with fallbacks
  */
 export const getRegionBoundaryData = async (
   regionType: 'country' | 'state' | 'city',
-  regionName: string
+  regionName: string,
+  countryCode?: string,
+  stateCode?: string
 ): Promise<BoundaryData | null> => {
   logger.debug(`RegionBoundaryService: Fetching boundary for ${regionType}: ${regionName}`);
 
   try {
-    // First check if we have cached boundary data
-    const cachedBoundary = await getRegionBoundary(regionType, regionName);
+    // Try to get data from geographic APIs first
+    let apiResponse: BoundaryApiResponse | null = null;
 
-    if (cachedBoundary) {
-      logger.debug(`RegionBoundaryService: Found cached boundary for ${regionName}`);
+    switch (regionType) {
+      case 'country':
+        apiResponse = await geographicApiService.getCountryBoundary(regionName, countryCode);
+        break;
+      case 'state':
+        apiResponse = await geographicApiService.getStateBoundary(regionName, countryCode);
+        break;
+      case 'city':
+        apiResponse = await geographicApiService.getCityBoundary(regionName, stateCode, countryCode);
+        break;
+    }
 
-      const geometry = JSON.parse(cachedBoundary.boundary_geojson);
-      const area = cachedBoundary.area_km2 || calculatePolygonArea(geometry);
-      const centroid = turf.centroid(geometry).geometry.coordinates as [number, number];
+    if (apiResponse && validateGeoJSONGeometry(apiResponse.geometry)) {
+      logger.debug(`RegionBoundaryService: Got boundary from API (${apiResponse.source}) for ${regionName}`);
+
+      const area = apiResponse.area || calculatePolygonArea(apiResponse.geometry);
+      const centroid = turf.centroid(apiResponse.geometry).geometry.coordinates as [number, number];
 
       return {
         type: regionType,
-        name: regionName,
-        geometry,
+        name: apiResponse.name,
+        code: apiResponse.code,
+        geometry: apiResponse.geometry,
         area,
-        centroid
+        centroid,
+        source: apiResponse.source === 'cache' ? 'cache' : 'api'
       };
     }
 
-    // If not cached, try to get simplified boundary data
-    const simplifiedGeometry = SIMPLIFIED_BOUNDARIES[regionName];
+    // Fallback to simplified boundary data if API fails
+    const fallbackGeometry = FALLBACK_BOUNDARIES[regionName];
 
-    if (simplifiedGeometry) {
-      logger.debug(`RegionBoundaryService: Using simplified boundary for ${regionName}`);
+    if (fallbackGeometry && validateGeoJSONGeometry(fallbackGeometry)) {
+      logger.debug(`RegionBoundaryService: Using fallback boundary for ${regionName}`);
 
-      const area = calculatePolygonArea(simplifiedGeometry);
-      const centroid = turf.centroid(simplifiedGeometry).geometry.coordinates as [number, number];
+      const area = calculatePolygonArea(fallbackGeometry);
+      const centroid = turf.centroid(fallbackGeometry).geometry.coordinates as [number, number];
 
-      // Cache the boundary data
-      await saveRegionBoundary(regionType, regionName, simplifiedGeometry, area);
+      // Cache the fallback boundary data
+      await saveRegionBoundary(regionType, regionName, fallbackGeometry, area);
 
       return {
         type: regionType,
         name: regionName,
-        geometry: simplifiedGeometry,
+        geometry: fallbackGeometry,
         area,
-        centroid
+        centroid,
+        source: 'fallback'
       };
     }
 
@@ -122,6 +145,23 @@ export const getRegionBoundaryData = async (
 
   } catch (error) {
     logger.error(`RegionBoundaryService: Error fetching boundary for ${regionName}:`, error);
+    
+    // Try fallback data on error
+    const fallbackGeometry = FALLBACK_BOUNDARIES[regionName];
+    if (fallbackGeometry) {
+      const area = calculatePolygonArea(fallbackGeometry);
+      const centroid = turf.centroid(fallbackGeometry).geometry.coordinates as [number, number];
+
+      return {
+        type: regionType,
+        name: regionName,
+        geometry: fallbackGeometry,
+        area,
+        centroid,
+        source: 'fallback'
+      };
+    }
+
     return null;
   }
 };
@@ -176,12 +216,81 @@ const createApproximateBoundary = async (
       name: regionName,
       geometry: approximateGeometry,
       area,
-      centroid
+      centroid,
+      source: 'fallback'
     };
   } catch (error) {
     logger.error(`RegionBoundaryService: Error creating approximate boundary for ${regionName}:`, error);
     return null;
   }
+};
+
+/**
+ * Get total counts of available regions from APIs
+ */
+export const getTotalRegionCountsFromApis = async (): Promise<{
+  countries: number;
+  states: number;
+  cities: number;
+}> => {
+  try {
+    return await getTotalRegionCounts();
+  } catch (error) {
+    logger.error('RegionBoundaryService: Error getting total region counts from APIs:', error);
+    
+    // Return fallback values
+    return {
+      countries: 195,
+      states: 3142,
+      cities: 10000
+    };
+  }
+};
+
+/**
+ * Batch fetch boundaries for multiple regions
+ */
+export const batchGetRegionBoundaries = async (
+  regions: Array<{
+    type: 'country' | 'state' | 'city';
+    name: string;
+    countryCode?: string;
+    stateCode?: string;
+  }>
+): Promise<BoundaryData[]> => {
+  logger.debug(`RegionBoundaryService: Batch fetching ${regions.length} region boundaries`);
+
+  const results: BoundaryData[] = [];
+  const batchSize = 3; // Small batch size to respect API rate limits
+
+  for (let i = 0; i < regions.length; i += batchSize) {
+    const batch = regions.slice(i, i + batchSize);
+    
+    const batchPromises = batch.map(async (region) => {
+      try {
+        return await getRegionBoundaryData(
+          region.type,
+          region.name,
+          region.countryCode,
+          region.stateCode
+        );
+      } catch (error) {
+        logger.warn(`RegionBoundaryService: Failed to fetch boundary for ${region.name}:`, error);
+        return null;
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults.filter((result): result is BoundaryData => result !== null));
+
+    // Add delay between batches to respect rate limits
+    if (i + batchSize < regions.length) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  logger.debug(`RegionBoundaryService: Successfully fetched ${results.length} boundaries`);
+  return results;
 };
 
 /**
