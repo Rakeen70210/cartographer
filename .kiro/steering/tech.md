@@ -1,73 +1,95 @@
-# Technology Stack
+---
+inclusion: always
+---
 
-## Framework & Platform
-- **React Native 0.79.4** with **React 19.0.0**
-- **Expo SDK ~53.0** for cross-platform development
-- **Expo Router ~5.1** for file-based navigation
-- **TypeScript ~5.8** with strict mode enabled
+# Technology Stack & Implementation Guidelines
 
-## Key Dependencies
+## Core Framework Requirements
+- **React Native 0.79.4** with **React 19.0.0** - Use React Native components, not web equivalents
+- **Expo SDK ~53.0** - Always use Expo APIs when available over bare React Native
+- **TypeScript ~5.8** with strict mode - All code must pass strict TypeScript checks
+- **Expo Router ~5.1** - Use file-based routing in `app/` directory
 
-### Mapping & Geospatial
-- **@rnmapbox/maps ^10.1.39** - Mapbox integration for map rendering and viewport detection
-- **@turf/turf ^7.2.0** - Geospatial analysis and operations (buffer, union, bbox, bboxPolygon)
-- **@turf/difference ^7.2.0** - Geometric difference operations for viewport-based fog calculation
-- **geojson ^0.5.0** - GeoJSON type definitions and utilities
+## Critical Dependencies & Usage Patterns
 
-### Fog of War Implementation
-- **Viewport-based rendering**: Fog calculations limited to current map viewport for optimal performance
-- **Dynamic fog updates**: Fog geometry recalculated on viewport changes with debouncing
-- **Geometric operations**: Uses Turf.js difference operations between viewport polygons and revealed areas
-- **Performance optimization**: Polygon simplification and complexity monitoring for large datasets
+### Geospatial Operations (REQUIRED for fog features)
+- **@rnmapbox/maps ^10.1.39** - Primary mapping engine
+  - Use `MapView` component for all map rendering
+  - Implement viewport change handlers for fog updates
+  - Access camera/viewport bounds via `onCameraChanged`
+- **@turf/turf ^7.2.0** - Geospatial calculations
+  - Use `buffer()` for creating revealed areas around GPS points
+  - Use `union()` to merge overlapping revealed areas
+  - Use `bbox()` and `bboxPolygon()` for viewport calculations
+- **@turf/difference ^7.2.0** - Fog geometry calculation
+  - Use `difference()` between viewport polygon and revealed areas
+  - Always validate geometry before operations (check for null/undefined)
 
-### Data & Storage
-- **expo-sqlite ~15.2** - Local SQLite database for location and revealed area persistence
-- **expo-location ~18.1** - GPS location services and background tracking
-- **expo-task-manager ~13.1** - Background task management for location tracking
+### Data Persistence Patterns
+- **expo-sqlite ~15.2** - All persistent data must use SQLite
+  - Use `@/utils/database.ts` for all database operations
+  - Never perform direct SQL queries in components
+  - Always use transactions for multi-operation updates
+- **expo-location ~18.1** - GPS tracking
+  - Request permissions before accessing location
+  - Use `watchPositionAsync` for real-time tracking
+  - Implement error handling for location unavailable scenarios
 
-### Navigation & UI
-- **@react-navigation/native ^7.1.6** - Navigation framework
-- **@react-navigation/bottom-tabs ^7.3.10** - Tab-based navigation
-- **react-native-reanimated ~3.17** - Smooth animations and gestures
-- **react-native-gesture-handler ~2.24** - Touch gesture handling
+### Performance Requirements
+- **Viewport-based calculations**: Only process data within current map bounds
+- **Debouncing**: Use 300ms debounce for map viewport changes
+- **Polygon simplification**: Apply to complex geometries before rendering
+- **Memory management**: Clean up map listeners in useEffect cleanup
 
-## Development Tools
-- **ESLint** with Expo config for code linting
-- **@testing-library/react-native** for component testing
-- **TypeScript** with path mapping (`@/*` aliases)
-
-## Build & Deployment
-- **EAS Build** (project ID: a6a9146c-c5f1-41ef-9e14-4504ac1e4de8)
-- **Metro bundler** for web builds
-- **Gradle** for Android builds
-
-## Common Commands
-
+## Development Commands (Use These Exact Commands)
 ```bash
-# Development
-npm start                 # Start Expo development server
-npx expo run:android     # Run on Android device/emulator (preferred for testing)
-npm run android          # Alternative Android run command
-npm run ios             # Run on iOS device/simulator
-npm run web             # Run web version
+# Primary development (Android preferred for testing)
+npx expo run:android     # Use this for fog of war testing
+npm start               # Expo development server
 
-# Code Quality
-npm run lint            # Run ESLint
+# Testing location features
+# Use Android emulator Extended Controls > Location for GPS simulation
 
-# Project Management
-npm run reset-project   # Reset to blank project template
+# Code quality
+npm run lint           # Must pass before commits
 ```
 
-## Testing Guidelines
+## Implementation Rules
 
-### Android Testing (Primary Platform)
-- Use `npx expo run:android` for fog of war feature testing
-- Test with Android emulator location simulation for GPS features
-- Validate performance on Android devices/emulators
-- Use Android emulator Extended Controls > Location for mock GPS data
+### Geospatial Code Patterns
+```typescript
+// Always validate Turf.js operations
+const fogGeometry = turf.difference(viewportPolygon, revealedAreas);
+if (!fogGeometry) {
+  // Handle case where difference returns null
+  return defaultFogGeometry;
+}
 
-## Environment Configuration
-- **Mapbox Access Token**: Configured in app.json plugins section
-- **Bundle Identifiers**: 
-  - iOS: `com.deabound.Cartographer`
-  - Android: `com.deabound.Cartographer`
+// Use viewport bounds for all calculations
+const bounds = await mapRef.current?.getVisibleBounds();
+const viewportBbox = turf.bbox(turf.bboxPolygon(bounds));
+```
+
+### Database Integration
+- Use `@/utils/database.ts` for all SQLite operations
+- Never perform raw SQL in components
+- Always use prepared statements for user data
+- Implement proper error handling and rollbacks
+
+### Map Component Requirements
+- Always use `@rnmapbox/maps` components
+- Implement proper cleanup for map event listeners
+- Use viewport-based rendering for performance
+- Handle map loading states and errors
+
+### Location Tracking
+- Request permissions before accessing GPS
+- Implement background location tracking with `expo-task-manager`
+- Handle location errors gracefully
+- Store all location data in SQLite immediately
+
+## Testing Requirements
+- **Primary platform**: Android (use `npx expo run:android`)
+- **GPS simulation**: Android emulator Extended Controls > Location
+- **Performance testing**: Test with large datasets of revealed areas
+- **Error scenarios**: Test with location disabled, network offline
