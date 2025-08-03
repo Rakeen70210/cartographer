@@ -58,7 +58,7 @@
   - Write integration tests with real API calls and mock fallback scenarios
   - _Requirements: 2.3, 2.4, 2.5, 2.9, 6.1, 6.2_
 
-- [ ] 4. Create remaining regions calculation service
+- [x] 4. Create remaining regions calculation service
   - Implement functions to calculate total available countries, states, and cities
   - Create utilities to determine remaining unexplored regions
   - Add functions to calculate remaining regions within visited countries/states
@@ -66,8 +66,8 @@
   - Write unit tests for remaining region calculations
   - _Requirements: 3.4, 3.5, 3.6, 3.9, 3.10, 3.11, 3.13_
 
-- [ ] 5. Build core UI components for statistics display
-  - [ ] 5.1 Create StatisticsCard component
+- [x] 5. Build core UI components for statistics display
+  - [x] 5.1 Create StatisticsCard component
     - Implement reusable card component with title, value, and optional progress bar
     - Add support for loading states with skeleton animations
     - Implement theme-aware styling using existing ThemedView and ThemedText
@@ -76,7 +76,7 @@
     - Write unit tests for StatisticsCard component rendering and interactions
     - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6_
 
-  - [ ] 5.2 Create ProgressIndicator component
+  - [x] 5.2 Create ProgressIndicator component
     - Implement animated progress bar component for percentage displays
     - Add support for different progress bar styles and colors
     - Create circular progress indicators for small percentage values
@@ -85,7 +85,7 @@
     - Write unit tests for ProgressIndicator component with various percentage values
     - _Requirements: 4.8, 4.5, 4.6_
 
-  - [ ] 5.3 Create HierarchicalView component
+  - [x] 5.3 Create HierarchicalView component
     - Implement expandable tree view component for geographic breakdowns
     - Add support for nested hierarchy levels with proper indentation
     - Create expand/collapse animations and state management
@@ -94,7 +94,7 @@
     - Write unit tests for HierarchicalView component with sample hierarchy data
     - _Requirements: 2.8, 4.2, 4.7, 4.5_
 
-- [ ] 6. Implement statistics data management hook
+- [x] 6. Implement statistics data management hook
   - Create useStatistics custom hook for managing statistics state
   - Implement data fetching and caching logic within the hook
   - Add automatic refresh functionality when location data changes
