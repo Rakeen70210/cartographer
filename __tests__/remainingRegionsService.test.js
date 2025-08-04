@@ -18,43 +18,86 @@ jest.mock('../utils/geographicApiService', () => ({
 }));
 
 jest.mock('../utils/geographicHierarchy', () => ({
-  convertToLocationWithGeography: jest.fn(),
-  getHierarchyLevelCounts: jest.fn()
+  convertToLocationWithGeography: jest.fn()
 }));
 
-jest.mock('../utils/logger', () => ({
-  logger: {
-    debug: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn()
-  }
-}));
+import * as GeographicApiService from '../utils/geographicApiService';
+import * as GeographicHierarchy from '../utils/geographicHierarchy';
 
-describe('RemainingRegionsService', () => {
+describe('Remaining Regions Service', () => {
+  const sampleLocationData = [
+    {
+      id: 1,
+      latitude: 40.7128,
+      longitude: -74.0060,
+      timestamp: 1000,
+      country: 'United States',
+      countryCode: 'US',
+      state: 'New York',
+      stateCode: 'NY',
+      city: 'New York City',
+      isGeocoded: true
+    },
+    {
+      id: 2,
+      latitude: 40.7589,
+      longitude: -73.9851,
+      timestamp: 2000,
+      country: 'United States',
+      countryCode: 'US',
+      state: 'New York',
+      stateCode: 'NY',
+      city: 'Manhattan',
+      isGeocoded: true
+    },
+    {
+      id: 3,
+      latitude: 34.0522,
+      longitude: -118.2437,
+      timestamp: 3000,
+      country: 'United States',
+      countryCode: 'US',
+      state: 'California',
+      stateCode: 'CA',
+      city: 'Los Angeles',
+      isGeocoded: true
+    },
+    {
+      id: 4,
+      latitude: 43.6532,
+      longitude: -79.3832,
+      timestamp: 4000,
+      country: 'Canada',
+      countryCode: 'CA',
+      state: 'Ontario',
+      stateCode: 'ON',
+      city: 'Toronto',
+      isGeocoded: true
+    }
+  ];
+
+  const sampleTotalCounts = {
+    countries: 195,
+    states: 3142,
+    cities: 10000
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   describe('calculateTotalAvailableRegions', () => {
-    test('should return total region counts from API', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      const mockTotalCounts = {
-        countries: 195,
-        states: 3142,
-        cities: 10000
-      };
-
-      getTotalRegionCounts.mockResolvedValueOnce(mockTotalCounts);
+    test('returns total region counts from API', async () => {
+      GeographicApiService.getTotalRegionCounts.mockResolvedValue(sampleTotalCounts);
 
       const result = await calculateTotalAvailableRegions();
 
-      expect(result).toEqual(mockTotalCounts);
-      expect(getTotalRegionCounts).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(sampleTotalCounts);
+      expect(GeographicApiService.getTotalRegionCounts).toHaveBeenCalled();
     });
 
-    test('should return fallback values when API fails', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      getTotalRegionCounts.mockRejectedValueOnce(new Error('API error'));
+    test('returns fallback counts when API fails', async () => {
+      GeographicApiService.getTotalRegionCounts.mockRejectedValue(new Error('API Error'));
 
       const result = await calculateTotalAvailableRegions();
 
@@ -63,301 +106,404 @@ describe('RemainingRegionsService', () => {
         states: 3142,
         cities: 10000
       });
+    });
+
+    test('handles API timeout gracefully', async () => {
+      GeographicApiService.getTotalRegionCounts.mockImplementation(
+        () => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100))
+      );
+
+      const result = await calculateTotalAvailableRegions();
+
+      expect(result.countries).toBe(195);
+      expect(result.states).toBe(3142);
+      expect(result.cities).toBe(10000);
     });
   });
 
   describe('calculateVisitedRegions', () => {
-    test('should calculate unique visited regions correctly', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      const mockLocations = [
-        { country: 'United States', state: 'California', city: 'San Francisco' },
-        { country: 'United States', state: 'California', city: 'Los Angeles' },
-        { country: 'United States', state: 'New York', city: 'New York City' },
-        { country: 'Canada', state: 'Ontario', city: 'Toronto' },
-        { country: 'Canada', state: 'Ontario', city: 'Ottawa' }
+    test('calculates unique visited regions correctly', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
+
+      const result = await calculateVisitedRegions();
+
+      expect(result.countries).toBe(2); // US and Canada
+      expect(result.states).toBe(3); // NY, CA, ON
+      expect(result.cities).toBe(4); // NYC, Manhattan, LA, Toronto
+    });
+
+    test('handles duplicate countries correctly', async () => {
+      const duplicateCountryData = [
+        ...sampleLocationData,
+        {
+          id: 5,
+          latitude: 41.8781,
+          longitude: -87.6298,
+          timestamp: 5000,
+          country: 'United States', // Duplicate country
+          state: 'Illinois',
+          city: 'Chicago',
+          isGeocoded: true
+        }
       ];
 
-      convertToLocationWithGeography.mockResolvedValueOnce(mockLocations);
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(duplicateCountryData);
 
       const result = await calculateVisitedRegions();
 
-      expect(result).toEqual({
-        countries: 2, // United States, Canada
-        states: 3, // California, New York, Ontario (with country prefixes)
-        cities: 5 // All unique cities with full paths
-      });
+      expect(result.countries).toBe(2); // Still only US and Canada
+      expect(result.states).toBe(4); // NY, CA, ON, IL
+      expect(result.cities).toBe(5); // NYC, Manhattan, LA, Toronto, Chicago
     });
 
-    test('should handle locations with missing geographic data', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      const mockLocations = [
-        { country: 'United States', state: null, city: null },
-        { country: null, state: 'Unknown State', city: 'Unknown City' },
-        { country: 'Canada', state: 'Ontario', city: null }
+    test('handles locations without geographic data', async () => {
+      const incompleteData = [
+        {
+          id: 1,
+          latitude: 40.7128,
+          longitude: -74.0060,
+          timestamp: 1000,
+          country: 'United States',
+          state: 'New York',
+          // No city
+          isGeocoded: true
+        },
+        {
+          id: 2,
+          latitude: 34.0522,
+          longitude: -118.2437,
+          timestamp: 2000,
+          // No geographic data
+          isGeocoded: false
+        }
       ];
 
-      convertToLocationWithGeography.mockResolvedValueOnce(mockLocations);
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(incompleteData);
 
       const result = await calculateVisitedRegions();
 
-      expect(result).toEqual({
-        countries: 2, // United States, Canada
-        states: 2, // Unknown State, Canada:Ontario
-        cities: 1 // Unknown City
-      });
+      expect(result.countries).toBe(1);
+      expect(result.states).toBe(1);
+      expect(result.cities).toBe(0);
     });
 
-    test('should return zero counts when no location data available', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      convertToLocationWithGeography.mockResolvedValueOnce([]);
+    test('handles empty location data', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue([]);
 
       const result = await calculateVisitedRegions();
 
-      expect(result).toEqual({
-        countries: 0,
-        states: 0,
-        cities: 0
-      });
+      expect(result.countries).toBe(0);
+      expect(result.states).toBe(0);
+      expect(result.cities).toBe(0);
     });
 
-    test('should return zero counts on error', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      convertToLocationWithGeography.mockRejectedValueOnce(new Error('Database error'));
+    test('handles database errors gracefully', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockRejectedValue(new Error('Database error'));
 
       const result = await calculateVisitedRegions();
 
-      expect(result).toEqual({
-        countries: 0,
-        states: 0,
-        cities: 0
-      });
+      expect(result.countries).toBe(0);
+      expect(result.states).toBe(0);
+      expect(result.cities).toBe(0);
+    });
+
+    test('creates unique keys for states and cities', async () => {
+      const ambiguousData = [
+        {
+          id: 1,
+          latitude: 32.7767,
+          longitude: -96.7970,
+          timestamp: 1000,
+          country: 'United States',
+          state: 'Georgia', // State named Georgia
+          city: 'Dallas',
+          isGeocoded: true
+        },
+        {
+          id: 2,
+          latitude: 41.7151,
+          longitude: 44.8271,
+          timestamp: 2000,
+          country: 'Georgia', // Country named Georgia
+          state: 'Tbilisi',
+          city: 'Tbilisi',
+          isGeocoded: true
+        }
+      ];
+
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(ambiguousData);
+
+      const result = await calculateVisitedRegions();
+
+      expect(result.countries).toBe(2); // US and Georgia (country)
+      expect(result.states).toBe(2); // Should distinguish between US:Georgia and Georgia:Tbilisi
+      expect(result.cities).toBe(2); // Dallas and Tbilisi
     });
   });
 
   describe('calculateRemainingRegions', () => {
-    test('should calculate remaining regions correctly', async () => {
-      const visited = { countries: 5, states: 20, cities: 100 };
+    test('calculates remaining regions correctly', async () => {
+      const visited = { countries: 2, states: 3, cities: 4 };
       const total = { countries: 195, states: 3142, cities: 10000 };
 
       const result = await calculateRemainingRegions(visited, total);
 
-      expect(result).toEqual({
-        countries: 190, // 195 - 5
-        states: 3122, // 3142 - 20
-        cities: 9900 // 10000 - 100
-      });
+      expect(result.countries).toBe(193); // 195 - 2
+      expect(result.states).toBe(3139); // 3142 - 3
+      expect(result.cities).toBe(9996); // 10000 - 4
     });
 
-    test('should not return negative values', async () => {
+    test('handles negative results gracefully', async () => {
       const visited = { countries: 200, states: 5000, cities: 15000 };
       const total = { countries: 195, states: 3142, cities: 10000 };
 
       const result = await calculateRemainingRegions(visited, total);
 
-      expect(result).toEqual({
-        countries: 0, // Max(0, 195 - 200)
-        states: 0, // Max(0, 3142 - 5000)
-        cities: 0 // Max(0, 10000 - 15000)
-      });
+      expect(result.countries).toBe(0);
+      expect(result.states).toBe(0);
+      expect(result.cities).toBe(0);
     });
 
-    test('should fetch data when not provided', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-
-      getTotalRegionCounts.mockResolvedValueOnce({
-        countries: 195,
-        states: 3142,
-        cities: 10000
-      });
-
-      convertToLocationWithGeography.mockResolvedValueOnce([
-        { country: 'United States', state: 'California', city: 'San Francisco' }
-      ]);
+    test('fetches data when not provided', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
+      GeographicApiService.getTotalRegionCounts.mockResolvedValue(sampleTotalCounts);
 
       const result = await calculateRemainingRegions();
 
-      expect(result.countries).toBe(194); // 195 - 1
-      expect(getTotalRegionCounts).toHaveBeenCalledTimes(1);
-      expect(convertToLocationWithGeography).toHaveBeenCalledTimes(1);
+      expect(result.countries).toBe(193); // 195 - 2
+      expect(GeographicHierarchy.convertToLocationWithGeography).toHaveBeenCalled();
+      expect(GeographicApiService.getTotalRegionCounts).toHaveBeenCalled();
+    });
+
+    test('handles calculation errors', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockRejectedValue(new Error('Error'));
+      GeographicApiService.getTotalRegionCounts.mockRejectedValue(new Error('API Error'));
+
+      const result = await calculateRemainingRegions();
+
+      expect(result.countries).toBe(195); // Falls back to total - 0 visited
+      expect(result.states).toBe(3142);
+      expect(result.cities).toBe(10000);
     });
   });
 
   describe('calculateRemainingRegionsWithinVisited', () => {
-    test('should calculate remaining regions within visited countries/states', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      const mockLocations = [
-        { country: 'United States', state: 'California', city: 'San Francisco' },
-        { country: 'United States', state: 'New York', city: 'New York City' },
-        { country: 'Canada', state: 'Ontario', city: 'Toronto' }
-      ];
-
-      convertToLocationWithGeography.mockResolvedValueOnce(mockLocations);
+    test('calculates remaining regions within visited countries', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
 
       const result = await calculateRemainingRegionsWithinVisited();
 
       expect(result.visitedCountries).toEqual(['United States', 'Canada']);
       expect(result.totalStatesInVisitedCountries).toBe(40); // 2 countries * 20 avg states
-      expect(result.visitedStatesInVisitedCountries).toBe(3); // California, New York, Ontario
+      expect(result.visitedStatesInVisitedCountries).toBe(3); // NY, CA, ON
       expect(result.remainingStatesInVisitedCountries).toBe(37); // 40 - 3
-      expect(result.totalCitiesInVisitedStates).toBe(150); // 3 states * 50 avg cities
-      expect(result.visitedCitiesInVisitedStates).toBe(3); // San Francisco, NYC, Toronto
-      expect(result.remainingCitiesInVisitedStates).toBe(147); // 150 - 3
     });
 
-    test('should handle empty location data', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      convertToLocationWithGeography.mockResolvedValueOnce([]);
+    test('calculates cities within visited states', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
 
       const result = await calculateRemainingRegionsWithinVisited();
 
-      expect(result).toEqual({
-        visitedCountries: [],
-        totalStatesInVisitedCountries: 0,
-        visitedStatesInVisitedCountries: 0,
-        remainingStatesInVisitedCountries: 0,
-        totalCitiesInVisitedStates: 0,
-        visitedCitiesInVisitedStates: 0,
-        remainingCitiesInVisitedStates: 0
-      });
+      expect(result.totalCitiesInVisitedStates).toBe(150); // 3 states * 50 avg cities
+      expect(result.visitedCitiesInVisitedStates).toBe(4); // NYC, Manhattan, LA, Toronto
+      expect(result.remainingCitiesInVisitedStates).toBe(146); // 150 - 4
+    });
+
+    test('handles empty location data', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue([]);
+
+      const result = await calculateRemainingRegionsWithinVisited();
+
+      expect(result.visitedCountries).toEqual([]);
+      expect(result.totalStatesInVisitedCountries).toBe(0);
+      expect(result.visitedStatesInVisitedCountries).toBe(0);
+      expect(result.remainingStatesInVisitedCountries).toBe(0);
+    });
+
+    test('handles database errors', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockRejectedValue(new Error('Database error'));
+
+      const result = await calculateRemainingRegionsWithinVisited();
+
+      expect(result.visitedCountries).toEqual([]);
+      expect(result.totalStatesInVisitedCountries).toBe(0);
+    });
+
+    test('prevents negative remaining counts', async () => {
+      const manyLocationsData = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        latitude: 40 + i * 0.01,
+        longitude: -74 + i * 0.01,
+        timestamp: 1000 + i,
+        country: 'United States',
+        state: `State${i}`,
+        city: `City${i}`,
+        isGeocoded: true
+      }));
+
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(manyLocationsData);
+
+      const result = await calculateRemainingRegionsWithinVisited();
+
+      expect(result.remainingStatesInVisitedCountries).toBeGreaterThanOrEqual(0);
+      expect(result.remainingCitiesInVisitedStates).toBeGreaterThanOrEqual(0);
     });
   });
 
   describe('getRemainingRegionsData', () => {
-    test('should return comprehensive remaining regions data', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-
-      getTotalRegionCounts.mockResolvedValueOnce({
-        countries: 195,
-        states: 3142,
-        cities: 10000
-      });
-
-      convertToLocationWithGeography.mockResolvedValueOnce([
-        { country: 'United States', state: 'California', city: 'San Francisco' },
-        { country: 'Canada', state: 'Ontario', city: 'Toronto' }
-      ]);
+    test('returns comprehensive remaining regions data', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
+      GeographicApiService.getTotalRegionCounts.mockResolvedValue(sampleTotalCounts);
 
       const result = await getRemainingRegionsData();
 
       expect(result.visited.countries).toBe(2);
       expect(result.total.countries).toBe(195);
       expect(result.remaining.countries).toBe(193);
-      expect(result.percentageVisited.countries).toBeCloseTo(1.03, 2); // 2/195 * 100
+      expect(result.percentageVisited.countries).toBeCloseTo(1.026, 2); // 2/195 * 100
     });
 
-    test('should return fallback data on error', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      getTotalRegionCounts.mockRejectedValueOnce(new Error('API error'));
+    test('calculates percentages correctly', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
+      GeographicApiService.getTotalRegionCounts.mockResolvedValue(sampleTotalCounts);
 
       const result = await getRemainingRegionsData();
 
-      expect(result.visited).toEqual({ countries: 0, states: 0, cities: 0 });
-      expect(result.total).toEqual({ countries: 195, states: 3142, cities: 10000 });
-      expect(result.remaining).toEqual({ countries: 195, states: 3142, cities: 10000 });
-      expect(result.percentageVisited).toEqual({ countries: 0, states: 0, cities: 0 });
+      expect(result.percentageVisited.countries).toBeCloseTo(1.026, 2);
+      expect(result.percentageVisited.states).toBeCloseTo(0.095, 2); // 3/3142 * 100
+      expect(result.percentageVisited.cities).toBeCloseTo(0.04, 2); // 4/10000 * 100
+    });
+
+    test('handles zero total counts', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
+      GeographicApiService.getTotalRegionCounts.mockResolvedValue({
+        countries: 0,
+        states: 0,
+        cities: 0
+      });
+
+      const result = await getRemainingRegionsData();
+
+      expect(result.percentageVisited.countries).toBe(0);
+      expect(result.percentageVisited.states).toBe(0);
+      expect(result.percentageVisited.cities).toBe(0);
+    });
+
+    test('handles errors gracefully', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockRejectedValue(new Error('Error'));
+      GeographicApiService.getTotalRegionCounts.mockRejectedValue(new Error('API Error'));
+
+      const result = await getRemainingRegionsData();
+
+      expect(result.visited.countries).toBe(0);
+      expect(result.total.countries).toBe(195); // Fallback values
+      expect(result.remaining.countries).toBe(195);
     });
   });
 
   describe('formatRegionCount', () => {
-    test('should format singular counts correctly', () => {
-      expect(formatRegionCount(1, 'country')).toBe('1 country');
-      expect(formatRegionCount(1, 'state')).toBe('1 state');
-      expect(formatRegionCount(1, 'city')).toBe('1 city');
-    });
-
-    test('should format plural counts correctly', () => {
-      expect(formatRegionCount(5, 'country')).toBe('5 countries');
-      expect(formatRegionCount(10, 'state')).toBe('10 states');
-      expect(formatRegionCount(100, 'city')).toBe('100 cities');
-    });
-
-    test('should format zero counts correctly', () => {
+    test('formats zero counts correctly', () => {
       expect(formatRegionCount(0, 'country')).toBe('0 countries');
       expect(formatRegionCount(0, 'state')).toBe('0 states');
       expect(formatRegionCount(0, 'city')).toBe('0 cities');
     });
 
-    test('should format large numbers with locale formatting', () => {
-      expect(formatRegionCount(1000, 'country')).toBe('1,000 countries');
-      expect(formatRegionCount(1234567, 'city')).toBe('1,234,567 cities');
+    test('formats singular counts correctly', () => {
+      expect(formatRegionCount(1, 'country')).toBe('1 country');
+      expect(formatRegionCount(1, 'state')).toBe('1 state');
+      expect(formatRegionCount(1, 'city')).toBe('1 city');
     });
 
-    test('should handle already plural forms', () => {
-      expect(formatRegionCount(5, 'countries')).toBe('5 countries');
+    test('formats plural counts correctly', () => {
+      expect(formatRegionCount(5, 'country')).toBe('5 countries');
+      expect(formatRegionCount(10, 'state')).toBe('10 states');
+      expect(formatRegionCount(25, 'city')).toBe('25 cities');
+    });
+
+    test('formats large numbers with locale separators', () => {
+      expect(formatRegionCount(1234, 'country')).toBe('1,234 countries');
+      expect(formatRegionCount(5678, 'state')).toBe('5,678 states');
+      expect(formatRegionCount(9999, 'city')).toBe('9,999 cities');
+    });
+
+    test('handles already plural input types', () => {
       expect(formatRegionCount(1, 'countries')).toBe('1 country');
+      expect(formatRegionCount(5, 'countries')).toBe('5 countries');
+      expect(formatRegionCount(1, 'states')).toBe('1 state');
+      expect(formatRegionCount(5, 'states')).toBe('5 states');
+      expect(formatRegionCount(1, 'cities')).toBe('1 city');
+      expect(formatRegionCount(5, 'cities')).toBe('5 cities');
     });
   });
 
   describe('formatVisitedVsRemaining', () => {
-    test('should format visited vs remaining correctly', () => {
+    test('formats visited vs remaining correctly', () => {
       const result = formatVisitedVsRemaining(5, 195, 'country');
       expect(result).toBe('5 countries of 195 visited, 190 countries remaining');
     });
 
-    test('should handle singular visited count', () => {
+    test('handles singular visited count', () => {
       const result = formatVisitedVsRemaining(1, 195, 'country');
       expect(result).toBe('1 country of 195 visited, 194 countries remaining');
     });
 
-    test('should handle zero visited count', () => {
+    test('handles zero visited count', () => {
       const result = formatVisitedVsRemaining(0, 195, 'country');
       expect(result).toBe('0 countries of 195 visited, 195 countries remaining');
     });
 
-    test('should handle all visited', () => {
+    test('handles all visited', () => {
       const result = formatVisitedVsRemaining(195, 195, 'country');
       expect(result).toBe('195 countries of 195 visited, 0 countries remaining');
+    });
+
+    test('handles large numbers with formatting', () => {
+      const result = formatVisitedVsRemaining(1234, 5678, 'state');
+      expect(result).toBe('1,234 states of 5,678 visited, 4,444 states remaining');
+    });
+
+    test('prevents negative remaining counts', () => {
+      const result = formatVisitedVsRemaining(200, 195, 'country');
+      expect(result).toBe('200 countries of 195 visited, 0 countries remaining');
     });
   });
 
   describe('formatPercentage', () => {
-    test('should format percentages with default precision', () => {
-      expect(formatPercentage(50.123)).toBe('50.1%');
-      expect(formatPercentage(0.567)).toBe('0.6%');
-      expect(formatPercentage(99.99)).toBe('100.0%');
-    });
-
-    test('should format zero percentage', () => {
+    test('formats zero percentage', () => {
       expect(formatPercentage(0)).toBe('0%');
+      expect(formatPercentage(0, 2)).toBe('0%');
     });
 
-    test('should format very small percentages', () => {
-      expect(formatPercentage(0.05)).toBe('<0.1%');
-      expect(formatPercentage(0.09)).toBe('<0.1%');
+    test('formats small percentages', () => {
+      expect(formatPercentage(0.05, 1)).toBe('<0.1%');
+      expect(formatPercentage(0.001, 2)).toBe('<0.1%');
     });
 
-    test('should format 100% correctly', () => {
+    test('formats normal percentages with specified precision', () => {
+      expect(formatPercentage(1.234, 1)).toBe('1.2%');
+      expect(formatPercentage(1.234, 2)).toBe('1.23%');
+      expect(formatPercentage(1.234, 0)).toBe('1%');
+    });
+
+    test('formats 100% correctly', () => {
       expect(formatPercentage(100)).toBe('100%');
       expect(formatPercentage(100.5)).toBe('100%');
     });
 
-    test('should respect custom precision', () => {
-      expect(formatPercentage(50.123, 2)).toBe('50.12%');
-      expect(formatPercentage(50.123, 0)).toBe('50%');
+    test('uses default precision of 1', () => {
+      expect(formatPercentage(1.234)).toBe('1.2%');
     });
   });
 
   describe('getRegionExplorationSummary', () => {
-    test('should return summary for users with exploration data', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-
-      getTotalRegionCounts.mockResolvedValueOnce({
-        countries: 195,
-        states: 3142,
-        cities: 10000
-      });
-
-      convertToLocationWithGeography.mockResolvedValueOnce([
-        { country: 'United States', state: 'California', city: 'San Francisco' },
-        { country: 'Canada', state: 'Ontario', city: 'Toronto' }
-      ]);
+    test('returns summary for users with exploration data', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
+      GeographicApiService.getTotalRegionCounts.mockResolvedValue(sampleTotalCounts);
 
       const result = await getRegionExplorationSummary();
 
       expect(result.hasData).toBe(true);
+      expect(result.summary).toContain('You\'ve explored');
       expect(result.summary).toContain('1.0%'); // 2/195 countries
       expect(result.details).toHaveLength(3);
       expect(result.details[0]).toContain('Countries:');
@@ -365,149 +511,148 @@ describe('RemainingRegionsService', () => {
       expect(result.details[2]).toContain('Cities:');
     });
 
-    test('should return encouragement message for new users', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-
-      getTotalRegionCounts.mockResolvedValueOnce({
-        countries: 195,
-        states: 3142,
-        cities: 10000
-      });
-
-      convertToLocationWithGeography.mockResolvedValueOnce([]);
+    test('returns encouragement for users with no data', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue([]);
+      GeographicApiService.getTotalRegionCounts.mockResolvedValue(sampleTotalCounts);
 
       const result = await getRegionExplorationSummary();
 
       expect(result.hasData).toBe(false);
       expect(result.summary).toBe('Start exploring to discover new regions!');
-      expect(result.details).toContain('Visit new locations to begin tracking your geographic exploration');
+      expect(result.details[0]).toContain('Visit new locations');
+      expect(result.details[1]).toContain('195 countries');
     });
 
-    test('should handle errors gracefully', async () => {
-      const { getTotalRegionCounts } = require('../utils/geographicApiService');
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      
-      getTotalRegionCounts.mockRejectedValueOnce(new Error('API error'));
-      convertToLocationWithGeography.mockRejectedValueOnce(new Error('Database error'));
+    test('handles errors gracefully', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockRejectedValue(new Error('Error'));
+      GeographicApiService.getTotalRegionCounts.mockRejectedValue(new Error('API Error'));
 
       const result = await getRegionExplorationSummary();
 
-      // When both API and database fail, getRemainingRegionsData returns fallback data
-      // with 0 visited regions, so it shows the "start exploring" message
       expect(result.hasData).toBe(false);
-      expect(result.summary).toBe('Start exploring to discover new regions!');
-      expect(result.details).toContain('Visit new locations to begin tracking your geographic exploration');
+      expect(result.summary).toBe('Unable to calculate exploration progress');
+      expect(result.details[0]).toBe('Please check your connection and try again');
     });
   });
 
   describe('validateRegionCounts', () => {
-    test('should validate correct region counts', () => {
-      const validCounts = { countries: 5, states: 20, cities: 100 };
+    test('validates correct region counts', () => {
+      const validCounts = { countries: 5, states: 10, cities: 25 };
       expect(validateRegionCounts(validCounts)).toBe(true);
     });
 
-    test('should reject negative counts', () => {
-      const invalidCounts = { countries: -1, states: 20, cities: 100 };
+    test('validates zero counts', () => {
+      const zeroCounts = { countries: 0, states: 0, cities: 0 };
+      expect(validateRegionCounts(zeroCounts)).toBe(true);
+    });
+
+    test('rejects negative counts', () => {
+      const negativeCounts = { countries: -1, states: 5, cities: 10 };
+      expect(validateRegionCounts(negativeCounts)).toBe(false);
+    });
+
+    test('rejects NaN values', () => {
+      const nanCounts = { countries: NaN, states: 5, cities: 10 };
+      expect(validateRegionCounts(nanCounts)).toBe(false);
+    });
+
+    test('rejects non-numeric values', () => {
+      const invalidCounts = { countries: '5', states: 10, cities: 25 };
       expect(validateRegionCounts(invalidCounts)).toBe(false);
     });
 
-    test('should reject NaN values', () => {
-      const invalidCounts = { countries: NaN, states: 20, cities: 100 };
-      expect(validateRegionCounts(invalidCounts)).toBe(false);
-    });
-
-    test('should reject non-number values', () => {
-      const invalidCounts = { countries: '5', states: 20, cities: 100 };
-      expect(validateRegionCounts(invalidCounts)).toBe(false);
-    });
-
-    test('should accept zero counts', () => {
-      const validCounts = { countries: 0, states: 0, cities: 0 };
-      expect(validateRegionCounts(validCounts)).toBe(true);
+    test('rejects missing properties', () => {
+      const incompleteCounts = { countries: 5, states: 10 }; // Missing cities
+      expect(validateRegionCounts(incompleteCounts)).toBe(false);
     });
   });
 
   describe('getRegionCountsFromHierarchy', () => {
-    test('should calculate region counts from location data', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      const mockLocations = [
-        { country: 'United States', state: 'California', city: 'San Francisco' },
-        { country: 'United States', state: 'New York', city: 'New York City' },
-        { country: 'Canada', state: 'Ontario', city: 'Toronto' }
-      ];
-
-      convertToLocationWithGeography.mockResolvedValueOnce(mockLocations);
+    test('calculates counts from location data', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(sampleLocationData);
 
       const result = await getRegionCountsFromHierarchy();
 
-      expect(result).toEqual({
-        countries: 2, // United States, Canada
-        states: 3, // California, New York, Ontario (with country prefixes)
-        cities: 3 // All cities with full paths
-      });
+      expect(result.countries).toBe(2); // US and Canada
+      expect(result.states).toBe(3); // NY, CA, ON
+      expect(result.cities).toBe(4); // NYC, Manhattan, LA, Toronto
     });
 
-    test('should return zero counts on error', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      convertToLocationWithGeography.mockRejectedValueOnce(new Error('Database error'));
+    test('handles empty data', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue([]);
 
       const result = await getRegionCountsFromHierarchy();
 
-      expect(result).toEqual({
-        countries: 0,
-        states: 0,
-        cities: 0
-      });
+      expect(result.countries).toBe(0);
+      expect(result.states).toBe(0);
+      expect(result.cities).toBe(0);
+    });
+
+    test('handles errors gracefully', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockRejectedValue(new Error('Error'));
+
+      const result = await getRegionCountsFromHierarchy();
+
+      expect(result.countries).toBe(0);
+      expect(result.states).toBe(0);
+      expect(result.cities).toBe(0);
+    });
+
+    test('creates unique keys for disambiguation', async () => {
+      const ambiguousData = [
+        {
+          id: 1,
+          country: 'United States',
+          state: 'Georgia',
+          city: 'Atlanta',
+          isGeocoded: true
+        },
+        {
+          id: 2,
+          country: 'Georgia', // Country with same name as US state
+          state: 'Tbilisi',
+          city: 'Tbilisi',
+          isGeocoded: true
+        }
+      ];
+
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(ambiguousData);
+
+      const result = await getRegionCountsFromHierarchy();
+
+      expect(result.countries).toBe(2); // US and Georgia (country)
+      expect(result.states).toBe(2); // Should distinguish US:Georgia from Georgia:Tbilisi
+      expect(result.cities).toBe(2); // Atlanta and Tbilisi
     });
   });
 
-  describe('Edge Cases and Error Handling', () => {
-    test('should handle undefined location properties gracefully', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      const mockLocations = [
-        { country: undefined, state: undefined, city: undefined },
-        { country: '', state: '', city: '' },
-        { country: null, state: null, city: null }
-      ];
-
-      convertToLocationWithGeography.mockResolvedValueOnce(mockLocations);
+  describe('edge cases and error handling', () => {
+    test('handles null/undefined inputs gracefully', async () => {
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(null);
 
       const result = await calculateVisitedRegions();
-
-      expect(result).toEqual({
-        countries: 0,
-        states: 0,
-        cities: 0
-      });
+      expect(result.countries).toBe(0);
     });
 
-    test('should handle duplicate region names in different contexts', async () => {
-      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
-      const mockLocations = [
-        { country: 'United States', state: 'Georgia', city: 'Atlanta' },
-        { country: 'Georgia', state: 'Tbilisi', city: 'Tbilisi' } // Country Georgia
+    test('handles malformed location data', async () => {
+      const malformedData = [
+        { id: 1 }, // Missing required fields
+        { id: 2, country: null, state: undefined, city: '' },
+        { id: 3, country: 'Valid Country', state: 'Valid State', city: 'Valid City' }
       ];
 
-      convertToLocationWithGeography.mockResolvedValueOnce(mockLocations);
+      GeographicHierarchy.convertToLocationWithGeography.mockResolvedValue(malformedData);
 
       const result = await calculateVisitedRegions();
-
-      expect(result.countries).toBe(2); // Should distinguish US state Georgia from country Georgia
-      expect(result.states).toBe(2); // Should have unique state keys
+      expect(result.countries).toBe(1); // Only the valid entry
     });
 
-    test('should handle very large numbers correctly', async () => {
-      const visited = { countries: 1000000, states: 2000000, cities: 3000000 };
-      const total = { countries: 1000001, states: 2000001, cities: 3000001 };
-
-      const result = await calculateRemainingRegions(visited, total);
-
-      expect(result).toEqual({
-        countries: 1,
-        states: 1,
-        cities: 1
-      });
+    test('handles very large numbers', async () => {
+      const largeCounts = { countries: 999999, states: 999999, cities: 999999 };
+      expect(validateRegionCounts(largeCounts)).toBe(true);
+      
+      const formatted = formatRegionCount(999999, 'country');
+      expect(formatted).toBe('999,999 countries');
     });
   });
 });

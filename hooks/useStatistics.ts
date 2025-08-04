@@ -1,8 +1,11 @@
-import { clearAllStatisticsCache, getLocations, getRevealedAreas, getStatisticsCache, saveStatisticsCache } from '@/utils/database';
+import { getLocations, getRevealedAreas } from '@/utils/database';
 import { calculateTotalDistance, DistanceResult } from '@/utils/distanceCalculator';
 import { buildGeographicHierarchy, calculateExplorationPercentages, convertToLocationWithGeography, GeographicHierarchy } from '@/utils/geographicHierarchy';
 import { logger } from '@/utils/logger';
 import { getRemainingRegionsData, RemainingRegionsData } from '@/utils/remainingRegionsService';
+import {
+    CACHE_KEYS
+} from '@/utils/statisticsCacheManager';
 import { calculateWorldExplorationPercentage, WorldExplorationResult } from '@/utils/worldExplorationCalculator';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
@@ -58,16 +61,7 @@ const DEFAULT_OPTIONS: Required<UseStatisticsOptions> = {
   enableBackgroundUpdates: true
 };
 
-/**
- * Cache keys for different statistics components
- */
-const CACHE_KEYS = {
-  STATISTICS_DATA: 'statistics_data',
-  DISTANCE_DATA: 'distance_data',
-  WORLD_EXPLORATION: 'world_exploration',
-  HIERARCHICAL_DATA: 'hierarchical_data',
-  REMAINING_REGIONS: 'remaining_regions'
-} as const;
+// Cache keys are now imported from statisticsCacheManager
 
 /**
  * Custom hook for managing statistics state and data fetching
@@ -96,6 +90,7 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
 
   /**
    * Calculate hash of location/revealed area data to detect changes
+   * Now uses optimized cache manager for change detection
    */
   const calculateDataHash = useCallback(async (): Promise<string> => {
     try {
@@ -110,15 +105,8 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
         lastLocationTime: locations.length > 0 ? Math.max(...locations.map(l => l.timestamp)) : 0
       });
       
-      // Simple hash function
-      let hash = 0;
-      for (let i = 0; i < dataString.length; i++) {
-        const char = dataString.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32-bit integer
-      }
-      
-      return hash.toString();
+      // Use cache manager's hash function
+      return statisticsCacheManager['calculateSimpleHash'](dataString);
     } catch (error) {
       logger.error('useStatistics: Error calculating data hash:', error);
       return Date.now().toString();
@@ -126,150 +114,225 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
   }, []);
 
   /**
-   * Load cached statistics data
+   * Load cached statistics data using optimized cache manager
    */
   const loadCachedData = useCallback(async (): Promise<StatisticsData | null> => {
     try {
-      const cached = await getStatisticsCache(CACHE_KEYS.STATISTICS_DATA);
-      
-      if (!cached) {
-        return null;
-      }
-
-      const age = Date.now() - cached.timestamp;
-      if (age > opts.cacheMaxAge) {
-        logger.debug('useStatistics: Cached data expired');
-        return null;
-      }
-
-      const data = JSON.parse(cached.cache_value) as StatisticsData;
-      logger.debug('useStatistics: Loaded cached statistics data');
-      return data;
+      return await statisticsCacheManager.get<StatisticsData>(CACHE_KEYS.STATISTICS_DATA);
     } catch (error) {
       logger.error('useStatistics: Error loading cached data:', error);
       return null;
     }
-  }, [opts.cacheMaxAge]);
+  }, []);
 
   /**
-   * Cache statistics data
+   * Cache statistics data using optimized cache manager
    */
   const cacheStatisticsData = useCallback(async (data: StatisticsData): Promise<void> => {
     try {
-      await saveStatisticsCache(CACHE_KEYS.STATISTICS_DATA, data);
+      await statisticsCacheManager.set(CACHE_KEYS.STATISTICS_DATA, data, opts.cacheMaxAge);
       logger.debug('useStatistics: Cached statistics data');
     } catch (error) {
       logger.error('useStatistics: Error caching statistics data:', error);
     }
-  }, []);
+  }, [opts.cacheMaxAge]);
 
   /**
-   * Calculate distance statistics
+   * Calculate distance statistics with caching and performance optimization
    */
   const calculateDistanceStats = useCallback(async (): Promise<DistanceResult> => {
-    try {
-      const locations = await getLocations();
-      return await calculateTotalDistance(locations);
-    } catch (error) {
-      logger.error('useStatistics: Error calculating distance stats:', error);
-      return { miles: 0, kilometers: 0 };
-    }
-  }, []);
+    return await statisticsCacheManager.getOrCompute(
+      CACHE_KEYS.DISTANCE_DATA,
+      async () => {
+        const endTiming = performanceMonitor.startTiming('distance_calculation');
+        try {
+          const locations = await getLocations();
+          
+          // Process large datasets in chunks
+          if (locations.length > 10000) {
+            logger.debug('useStatistics: Processing large location dataset in chunks');
+            const chunks = await DataChunker.processInChunks(
+              locations,
+              async (chunk) => chunk,
+              5000
+            );
+            const allLocations = chunks.flat();
+            const result = await calculateTotalDistance(allLocations);
+            endTiming();
+            return result;
+          }
+          
+          const result = await calculateTotalDistance(locations);
+          endTiming();
+          return result;
+        } catch (error) {
+          endTiming();
+          logger.error('useStatistics: Error calculating distance stats:', error);
+          return { miles: 0, kilometers: 0 };
+        }
+      },
+      opts.cacheMaxAge / 2 // Cache distance for half the main cache time
+    );
+  }, [opts.cacheMaxAge]);
 
   /**
-   * Calculate world exploration statistics
+   * Calculate world exploration statistics with caching and performance optimization
    */
   const calculateWorldExplorationStats = useCallback(async (): Promise<WorldExplorationResult> => {
-    try {
-      const revealedAreas = await getRevealedAreas();
-      const revealedAreaObjects = revealedAreas.map((area, index) => ({
-        id: index + 1,
-        geojson: typeof area === 'string' ? area : JSON.stringify(area)
-      }));
-      
-      return await calculateWorldExplorationPercentage(revealedAreaObjects);
-    } catch (error) {
-      logger.error('useStatistics: Error calculating world exploration stats:', error);
-      return {
-        percentage: 0,
-        totalAreaKm2: 510072000,
-        exploredAreaKm2: 0
-      };
-    }
-  }, []);
+    return await statisticsCacheManager.getOrCompute(
+      CACHE_KEYS.WORLD_EXPLORATION,
+      async () => {
+        const endTiming = performanceMonitor.startTiming('world_exploration_calculation');
+        try {
+          const revealedAreas = await getRevealedAreas();
+          const revealedAreaObjects = revealedAreas.map((area, index) => ({
+            id: index + 1,
+            geojson: typeof area === 'string' ? area : JSON.stringify(area)
+          }));
+          
+          // Process large datasets in chunks for memory efficiency
+          if (revealedAreaObjects.length > 5000) {
+            logger.debug('useStatistics: Processing large revealed areas dataset in chunks');
+            const chunks = await DataChunker.processInChunks(
+              revealedAreaObjects,
+              async (chunk) => chunk,
+              2500
+            );
+            const allAreas = chunks.flat();
+            const result = await calculateWorldExplorationPercentage(allAreas);
+            endTiming();
+            return result;
+          }
+          
+          const result = await calculateWorldExplorationPercentage(revealedAreaObjects);
+          endTiming();
+          return result;
+        } catch (error) {
+          endTiming();
+          logger.error('useStatistics: Error calculating world exploration stats:', error);
+          return {
+            percentage: 0,
+            totalAreaKm2: 510072000,
+            exploredAreaKm2: 0
+          };
+        }
+      },
+      opts.cacheMaxAge / 2
+    );
+  }, [opts.cacheMaxAge]);
 
   /**
-   * Calculate hierarchical breakdown statistics
+   * Calculate hierarchical breakdown statistics with performance optimization
    */
   const calculateHierarchicalStats = useCallback(async (): Promise<GeographicHierarchy[]> => {
-    try {
-      const locationsWithGeography = await convertToLocationWithGeography();
-      
-      if (locationsWithGeography.length === 0) {
-        return [];
-      }
-
-      const hierarchy = await buildGeographicHierarchy(locationsWithGeography, {
-        sortBy: 'name',
-        sortOrder: 'asc',
-        maxDepth: 4
-      });
-
-      // Calculate exploration percentages with area data
-      const revealedAreas = await getRevealedAreas();
-      const revealedGeoJSONFeatures = revealedAreas
-        .map(area => {
-          try {
-            const geojson = typeof area === 'string' ? JSON.parse(area) : area;
-            return geojson.type === 'Feature' ? geojson : { type: 'Feature', geometry: geojson, properties: {} };
-          } catch {
-            return null;
+    return await statisticsCacheManager.getOrCompute(
+      CACHE_KEYS.HIERARCHICAL_DATA,
+      async () => {
+        const endTiming = performanceMonitor.startTiming('hierarchical_calculation');
+        try {
+          const locationsWithGeography = await convertToLocationWithGeography();
+          
+          if (locationsWithGeography.length === 0) {
+            endTiming();
+            return [];
           }
-        })
-        .filter((feature): feature is GeoJSON.Feature => feature !== null);
 
-      return await calculateExplorationPercentages(hierarchy, revealedGeoJSONFeatures);
-    } catch (error) {
-      logger.error('useStatistics: Error calculating hierarchical stats:', error);
-      return [];
-    }
-  }, []);
+          // Limit hierarchy complexity for performance
+          const maxDepth = locationsWithGeography.length > 10000 ? 3 : 4;
+          const maxNodesPerLevel = locationsWithGeography.length > 50000 ? 50 : 100;
+
+          const hierarchy = await buildGeographicHierarchy(locationsWithGeography, {
+            sortBy: 'name',
+            sortOrder: 'asc',
+            maxDepth
+          });
+
+          // Apply hierarchy limits for large datasets
+          const limitedHierarchy = DataChunker.processHierarchyWithLimits(
+            hierarchy,
+            maxDepth,
+            maxNodesPerLevel
+          );
+
+          // Calculate exploration percentages with area data
+          const revealedAreas = await getRevealedAreas();
+          const revealedGeoJSONFeatures = revealedAreas
+            .map(area => {
+              try {
+                const geojson = typeof area === 'string' ? JSON.parse(area) : area;
+                return geojson.type === 'Feature' ? geojson : { type: 'Feature', geometry: geojson, properties: {} };
+              } catch {
+                return null;
+              }
+            })
+            .filter((feature): feature is GeoJSON.Feature => feature !== null);
+
+          const result = await calculateExplorationPercentages(limitedHierarchy, revealedGeoJSONFeatures);
+          endTiming();
+          return result;
+        } catch (error) {
+          endTiming();
+          logger.error('useStatistics: Error calculating hierarchical stats:', error);
+          return [];
+        }
+      },
+      opts.cacheMaxAge
+    );
+  }, [opts.cacheMaxAge]);
 
   /**
-   * Calculate remaining regions statistics
+   * Calculate remaining regions statistics with caching
    */
   const calculateRemainingRegionsStats = useCallback(async (): Promise<RemainingRegionsData> => {
-    try {
-      return await getRemainingRegionsData();
-    } catch (error) {
-      logger.error('useStatistics: Error calculating remaining regions stats:', error);
-      return {
-        visited: { countries: 0, states: 0, cities: 0 },
-        total: { countries: 195, states: 3142, cities: 10000 },
-        remaining: { countries: 195, states: 3142, cities: 10000 },
-        percentageVisited: { countries: 0, states: 0, cities: 0 }
-      };
-    }
-  }, []);
+    return await statisticsCacheManager.getOrCompute(
+      CACHE_KEYS.REMAINING_REGIONS,
+      async () => {
+        const endTiming = performanceMonitor.startTiming('remaining_regions_calculation');
+        try {
+          const result = await getRemainingRegionsData();
+          endTiming();
+          return result;
+        } catch (error) {
+          endTiming();
+          logger.error('useStatistics: Error calculating remaining regions stats:', error);
+          return {
+            visited: { countries: 0, states: 0, cities: 0 },
+            total: { countries: 195, states: 3142, cities: 10000 },
+            remaining: { countries: 195, states: 3142, cities: 10000 },
+            percentageVisited: { countries: 0, states: 0, cities: 0 }
+          };
+        }
+      },
+      opts.cacheMaxAge
+    );
+  }, [opts.cacheMaxAge]);
 
   /**
-   * Calculate all statistics data
+   * Calculate all statistics data with background processing and performance monitoring
    */
   const calculateStatistics = useCallback(async (): Promise<StatisticsData> => {
     logger.debug('useStatistics: Starting statistics calculation');
 
+    const endTiming = performanceMonitor.startTiming('full_statistics_calculation');
+
     try {
-      // Calculate all statistics in parallel for better performance
+      // Check memory pressure before starting expensive calculations
+      if (memoryManager.isMemoryPressure()) {
+        logger.warn('useStatistics: Memory pressure detected, optimizing before calculation');
+        await memoryManager.optimizeMemory();
+      }
+
+      // Use background processor for expensive calculations
       const [
         totalDistance,
         worldExploration,
         hierarchicalBreakdown,
         remainingRegionsData
       ] = await Promise.all([
-        calculateDistanceStats(),
-        calculateWorldExplorationStats(),
-        calculateHierarchicalStats(),
-        calculateRemainingRegionsStats()
+        backgroundProcessor.enqueue('distance_stats', calculateDistanceStats, 1),
+        backgroundProcessor.enqueue('world_exploration_stats', calculateWorldExplorationStats, 1),
+        backgroundProcessor.enqueue('hierarchical_stats', calculateHierarchicalStats, 0),
+        backgroundProcessor.enqueue('remaining_regions_stats', calculateRemainingRegionsStats, 1)
       ]);
 
       const statisticsData: StatisticsData = {
@@ -281,22 +344,26 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
         lastUpdated: Date.now()
       };
 
+      endTiming();
+
       logger.success('useStatistics: Statistics calculation completed', {
         distance: `${totalDistance.miles.toFixed(1)} miles`,
         worldPercentage: `${worldExploration.percentage.toFixed(3)}%`,
         countries: remainingRegionsData.visited.countries,
-        hierarchyNodes: hierarchicalBreakdown.length
+        hierarchyNodes: hierarchicalBreakdown.length,
+        cacheStats: statisticsCacheManager.getCacheStats()
       });
 
       return statisticsData;
     } catch (error) {
+      endTiming();
       logger.error('useStatistics: Error calculating statistics:', error);
       throw error;
     }
   }, [calculateDistanceStats, calculateWorldExplorationStats, calculateHierarchicalStats, calculateRemainingRegionsStats]);
 
   /**
-   * Fetch and update statistics data
+   * Fetch and update statistics data with debouncing and performance optimization
    */
   const fetchStatisticsData = useCallback(async (forceRefresh: boolean = false): Promise<void> => {
     // Prevent concurrent calculations
@@ -308,9 +375,22 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
     try {
       isCalculatingRef.current = true;
 
-      // Check if data has changed
-      const currentDataHash = await calculateDataHash();
-      const hasDataChanged = currentDataHash !== lastDataHashRef.current;
+      // Check if data has changed using cache manager
+      const [locations, revealedAreas] = await Promise.all([
+        getLocations(),
+        getRevealedAreas()
+      ]);
+
+      const locationChanged = await statisticsCacheManager.hasDataChanged(
+        CACHE_KEYS.LOCATION_HASH, 
+        locations
+      );
+      const revealedAreasChanged = await statisticsCacheManager.hasDataChanged(
+        CACHE_KEYS.REVEALED_AREAS_HASH, 
+        revealedAreas
+      );
+
+      const hasDataChanged = locationChanged || revealedAreasChanged;
 
       if (!forceRefresh && !hasDataChanged) {
         // Try to load from cache if data hasn't changed
@@ -325,6 +405,16 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
             lastUpdated: cachedData.lastUpdated
           }));
           return;
+        }
+      }
+
+      // Invalidate dependent caches if data changed
+      if (hasDataChanged) {
+        if (locationChanged) {
+          await statisticsCacheManager.invalidate(CACHE_KEYS.LOCATION_HASH);
+        }
+        if (revealedAreasChanged) {
+          await statisticsCacheManager.invalidate(CACHE_KEYS.REVEALED_AREAS_HASH);
         }
       }
 
@@ -352,9 +442,6 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
         lastUpdated: statisticsData.lastUpdated
       }));
 
-      // Update data hash
-      lastDataHashRef.current = currentDataHash;
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       logger.error('useStatistics: Error fetching statistics data:', error);
@@ -368,21 +455,26 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
     } finally {
       isCalculatingRef.current = false;
     }
-  }, [calculateDataHash, loadCachedData, calculateStatistics, cacheStatisticsData]);
+  }, [loadCachedData, calculateStatistics, cacheStatisticsData]);
 
   /**
-   * Manual refresh function
+   * Manual refresh function with debouncing
    */
   const refreshData = useCallback(async (): Promise<void> => {
-    await fetchStatisticsData(true);
+    const debouncedRefresh = statisticsDebouncer.debounce(
+      'manual_refresh',
+      () => fetchStatisticsData(true),
+      100 // Short debounce for manual refresh
+    );
+    debouncedRefresh();
   }, [fetchStatisticsData]);
 
   /**
-   * Clear all cached statistics data
+   * Clear all cached statistics data using cache manager
    */
   const clearCache = useCallback(async (): Promise<void> => {
     try {
-      await clearAllStatisticsCache();
+      await statisticsCacheManager.clearAll();
       lastDataHashRef.current = '';
       logger.debug('useStatistics: Cleared statistics cache');
     } catch (error) {
@@ -438,12 +530,18 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
   }, [fetchStatisticsData, opts.enableBackgroundUpdates]);
 
   /**
-   * Setup auto-refresh interval
+   * Setup auto-refresh interval with debouncing
    */
   const setupAutoRefresh = useCallback(() => {
     if (opts.enableAutoRefresh && opts.refreshInterval > 0) {
+      const debouncedAutoRefresh = statisticsDebouncer.debounce(
+        'auto_refresh',
+        () => fetchStatisticsData(false),
+        opts.refreshInterval
+      );
+
       refreshIntervalRef.current = setInterval(() => {
-        fetchStatisticsData(false);
+        debouncedAutoRefresh();
       }, opts.refreshInterval);
 
       logger.debug(`useStatistics: Auto-refresh enabled (${opts.refreshInterval}ms)`);
@@ -451,18 +549,35 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
   }, [opts.enableAutoRefresh, opts.refreshInterval, fetchStatisticsData]);
 
   /**
-   * Cleanup function
+   * Cleanup function with performance optimizer cleanup
    */
   const cleanup = useCallback(() => {
     if (refreshIntervalRef.current) {
       clearInterval(refreshIntervalRef.current);
       refreshIntervalRef.current = null;
     }
+    
+    // Cancel any pending debounced operations
+    statisticsDebouncer.cancel('auto_refresh');
+    statisticsDebouncer.cancel('manual_refresh');
   }, []);
 
-  // Initial data fetch and setup
+  // Initial data fetch and setup with cache warming
   useEffect(() => {
-    fetchStatisticsData(false);
+    const initializeStatistics = async () => {
+      // Warm cache on initialization
+      await statisticsCacheManager.warmCache();
+      
+      // Debounced initial fetch
+      const debouncedInitialFetch = statisticsDebouncer.debounce(
+        'initial_fetch',
+        () => fetchStatisticsData(false),
+        100
+      );
+      debouncedInitialFetch();
+    };
+
+    initializeStatistics();
     setupAutoRefresh();
 
     // Listen for app state changes
