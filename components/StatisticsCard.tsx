@@ -28,18 +28,19 @@ export function StatisticsCard({
   const progressBackgroundColor = useThemeColor({ light: '#F3F4F6', dark: '#374151' }, 'text');
   const progressFillColor = useThemeColor({ light: '#10B981', dark: '#34D399' }, 'tint');
   const secondaryTextColor = useThemeColor({ light: '#6B7280', dark: '#D1D5DB' }, 'text');
+  const skeletonColor = useThemeColor({ light: '#E5E7EB', dark: '#374151' }, 'text');
+  const tintColor = useThemeColor({}, 'tint');
 
   const CardComponent = onPress ? TouchableOpacity : View;
 
   const renderContent = () => {
     if (isLoading) {
-      const skeletonColor = useThemeColor({ light: '#E5E7EB', dark: '#374151' }, 'text');
       return (
         <View style={styles.loadingContainer}>
           <View style={[styles.skeletonTitle, { backgroundColor: skeletonColor }]} />
           <ActivityIndicator 
             size="large" 
-            color={useThemeColor({}, 'tint')} 
+            color={tintColor} 
             style={styles.loadingIndicator}
           />
           <View style={[styles.skeletonSubtitle, { backgroundColor: skeletonColor }]} />

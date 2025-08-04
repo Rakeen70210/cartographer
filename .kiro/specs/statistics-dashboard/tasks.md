@@ -103,8 +103,8 @@
   - Write unit tests for useStatistics hook with mock data
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 7. Create main Statistics tab screen component
-  - [ ] 7.1 Implement basic statistics dashboard layout
+- [-] 7. Create main Statistics tab screen component
+  - [x] 7.1 Implement basic statistics dashboard layout
     - Create main statistics screen component with proper navigation setup
     - Implement responsive card grid layout for key statistics
     - Add ScrollView with proper safe area handling
@@ -113,7 +113,7 @@
     - Write integration tests for basic statistics screen rendering
     - _Requirements: 4.1, 4.2, 4.3, 5.4_
 
-  - [ ] 7.2 Integrate statistics cards with real data
+  - [x] 7.2 Integrate statistics cards with real data
     - Connect StatisticsCard components to useStatistics hook data
     - Implement proper loading states and error handling in UI
     - Add formatted display for distance, percentages, and counts
