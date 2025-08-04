@@ -214,9 +214,13 @@ const tryNominatimGeocoding = async (
   longitude: number
 ): Promise<GeographicRegion | null> => {
   try {
+    // Import the geographic API service dynamically to avoid circular dependency
+    const { geographicApiService } = await import('./geographicApiService');
+    
     // Check connectivity first
     const isOnline = await geographicApiService.checkConnectivity();
     if (!isOnline) {
+      logger.debug('GeocodingService: Device is offline, skipping Nominatim');
       return null;
     }
 
@@ -231,12 +235,14 @@ const tryNominatimGeocoding = async (
     });
 
     if (!response.ok) {
+      logger.debug(`GeocodingService: Nominatim API returned ${response.status}`);
       return null;
     }
 
     const data = await response.json();
     
     if (!data || !data.address) {
+      logger.debug('GeocodingService: No address data in Nominatim response');
       return null;
     }
 

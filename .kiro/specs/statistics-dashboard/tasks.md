@@ -122,7 +122,7 @@
     - Write integration tests for statistics cards with mock data
     - _Requirements: 1.1, 1.2, 1.4, 2.1, 2.6, 2.7, 3.1, 3.2, 3.3, 3.10_
 
-  - [ ] 7.3 Add hierarchical geographic breakdown section
+  - [x] 7.3 Add hierarchical geographic breakdown section
     - Integrate HierarchicalView component into statistics screen
     - Connect hierarchical data from useStatistics hook
     - Implement expand/collapse functionality for geographic regions
@@ -131,15 +131,15 @@
     - Write integration tests for hierarchical view with sample geographic data
     - _Requirements: 2.3, 2.4, 2.5, 2.8, 4.2, 4.7_
 
-- [ ] 8. Add Statistics tab to navigation
+- [x] 8. Add Statistics tab to navigation
   - Update tab layout configuration to include Statistics tab
   - Add appropriate icon for Statistics tab using IconSymbol component
   - Ensure proper tab ordering and navigation flow
   - Test tab navigation and screen transitions
   - _Requirements: 4.1, 4.3_
 
-- [ ] 9. Implement offline support and error handling
-  - [ ] 9.1 Add offline data handling
+- [x] 9. Implement offline support and error handling
+  - [x] 9.1 Add offline data handling
     - Implement offline detection and appropriate UI indicators
     - Create fallback behavior for geocoding when offline
     - Add cached data display with offline status messaging
@@ -147,7 +147,7 @@
     - Write unit tests for offline behavior scenarios
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-  - [ ] 9.2 Implement comprehensive error handling
+  - [x] 9.2 Implement comprehensive error handling
     - Add error boundaries for statistics calculation failures
     - Create user-friendly error messages and retry mechanisms
     - Implement partial data display when some calculations fail

@@ -8,10 +8,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HierarchicalView } from '@/components/HierarchicalView';
+import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { StatisticsCard } from '@/components/StatisticsCard';
+import { StatisticsErrorBoundary } from '@/components/StatisticsErrorBoundary';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { useStatistics } from '@/hooks/useStatistics';
+import { useOfflineStatistics } from '@/hooks/useOfflineStatistics';
 import { useThemeColor } from '@/hooks/useThemeColor';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -22,8 +25,12 @@ export default function StatisticsScreen() {
     isLoading,
     isRefreshing,
     error,
+    isOffline,
+    networkStatus,
     refreshData,
-  } = useStatistics();
+    toggleHierarchyNode,
+    retryConnection,
+  } = useOfflineStatistics();
 
   const backgroundColor = useThemeColor({}, 'background');
   const errorColor = useThemeColor({ light: '#EF4444', dark: '#F87171' }, 'text');
@@ -31,6 +38,10 @@ export default function StatisticsScreen() {
   const handleRefresh = useCallback(async () => {
     await refreshData();
   }, [refreshData]);
+
+  const handleRetryConnection = useCallback(async () => {
+    return await retryConnection();
+  }, [retryConnection]);
 
   const renderErrorState = () => (
     <ThemedView style={styles.errorContainer}>
@@ -170,34 +181,94 @@ export default function StatisticsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
-      <ThemedView style={styles.header}>
-        <ThemedText type="title" style={styles.headerTitle}>
-          Statistics
-        </ThemedText>
-        <ThemedText style={styles.headerSubtitle}>
-          Your exploration journey
-        </ThemedText>
-      </ThemedView>
+    <StatisticsErrorBoundary onRetry={handleRefresh}>
+      <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
+        <ThemedView style={styles.header}>
+          <ThemedText type="title" style={styles.headerTitle}>
+            Statistics
+          </ThemedText>
+          <ThemedText style={styles.headerSubtitle}>
+            Your exploration journey
+          </ThemedText>
+        </ThemedView>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={useThemeColor({}, 'tint')}
-            colors={[useThemeColor({}, 'tint')]}
-            title="Pull to refresh statistics"
-            titleColor={useThemeColor({}, 'text')}
+        {/* Offline Indicator */}
+        <OfflineIndicator
+          isOffline={isOffline}
+          offlineReason={data?.offlineReason}
+          dataSource={data?.dataSource}
+          lastOnlineTime={networkStatus.lastOnlineTime}
+          onRetry={handleRetryConnection}
+        />
+
+        {/* Partial Data Indicator */}
+        {data?.isPartialData && data?.failedCalculations && (
+          <PartialDataIndicator
+            failedCalculations={data.failedCalculations}
+            onRetry={handleRefresh}
           />
-        }
-        showsVerticalScrollIndicator={false}
-        testID="statistics-scroll-view"
-      >
-        {error && !data ? renderErrorState() : null}
-        {isLoading && !data ? renderLoadingCards() : renderStatisticsCards()}
+        )}
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={useThemeColor({}, 'tint')}
+              colors={[useThemeColor({}, 'tint')]}
+              title="Pull to refresh statistics"
+              titleColor={useThemeColor({}, 'text')}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          testID="statistics-scroll-view"
+        >
+          {error && !data ? renderErrorState() : null}
+          {isLoading && !data ? renderLoadingCards() : renderStatisticsCards()}
+        
+        {/* Hierarchical Geographic Breakdown Section */}
+        {data && !error && (
+          <View style={styles.hierarchicalSection}>
+            <ThemedView style={styles.sectionHeader}>
+              <ThemedText type="subtitle" style={styles.sectionTitle}>
+                Geographic Breakdown
+              </ThemedText>
+              <ThemedText style={styles.sectionSubtitle}>
+                Exploration by region
+              </ThemedText>
+            </ThemedView>
+            
+            <ThemedView style={styles.hierarchicalContainer}>
+              {isLoading ? (
+                <View style={styles.hierarchicalLoading}>
+                  <ThemedText style={styles.loadingText}>
+                    Loading geographic data...
+                  </ThemedText>
+                </View>
+              ) : data.hierarchicalBreakdown && data.hierarchicalBreakdown.length > 0 ? (
+                <HierarchicalView
+                  data={data.hierarchicalBreakdown}
+                  onToggleExpand={toggleHierarchyNode}
+                  maxDepth={3}
+                  showProgressBars={true}
+                  testID="geographic-hierarchy"
+                />
+              ) : (
+                <View style={styles.hierarchicalEmpty}>
+                  <ThemedText style={styles.emptyIcon}>🗺️</ThemedText>
+                  <ThemedText style={styles.emptyTitle}>
+                    No Geographic Data
+                  </ThemedText>
+                  <ThemedText style={styles.emptySubtitle}>
+                    Start exploring to see your geographic breakdown
+                  </ThemedText>
+                </View>
+              )}
+            </ThemedView>
+          </View>
+        )}
         
         {/* Show data age indicator if data is stale */}
         {data && !isLoading && !error && (
@@ -214,8 +285,9 @@ export default function StatisticsScreen() {
             </ThemedText>
           </View>
         )}
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </StatisticsErrorBoundary>
   );
 }
 
@@ -282,6 +354,61 @@ const styles = StyleSheet.create({
     opacity: 0.5,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  hierarchicalSection: {
+    marginTop: 24,
+    paddingHorizontal: 12,
+  },
+  sectionHeader: {
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    opacity: 0.7,
+    fontSize: 14,
+  },
+  hierarchicalContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    minHeight: 200,
+    maxHeight: 400,
+  },
+  hierarchicalLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    opacity: 0.6,
+    fontSize: 14,
+  },
+  hierarchicalEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   dataAgeContainer: {
     alignItems: 'center',

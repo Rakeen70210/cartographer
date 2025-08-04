@@ -1,0 +1,431 @@
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { useOfflineStatistics } from '../hooks/useOfflineStatistics';
+import * as database from '../utils/database';
+import { networkUtils } from '../utils/networkUtils';
+
+// Mock dependencies
+jest.mock('../utils/networkUtils');
+jest.mock('../utils/database');
+jest.mock('../utils/logger');
+jest.mock('../utils/distanceCalculator');
+jest.mock('../utils/worldExplorationCalculator');
+jest.mock('../utils/geographicHierarchy');
+jest.mock('../utils/remainingRegionsService');
+
+// Mock React Native modules
+jest.mock('react-native', () => ({
+  AppState: {
+    addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+  },
+}));
+
+describe('useOfflineStatistics', () => {
+  const mockNetworkState = {
+    isConnected: true,
+    isInternetReachable: true,
+    type: 'wifi',
+    details: {}
+  };
+
+  const mockLocations = [
+    { id: 1, latitude: 37.7749, longitude: -122.4194, timestamp: Date.now() - 1000 },
+    { id: 2, latitude: 37.7849, longitude: -122.4094, timestamp: Date.now() }
+  ];
+
+  const mockRevealedAreas = [
+    JSON.stringify({
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-122.4194, 37.7749], [-122.4194, 37.7849], [-122.4094, 37.7849], [-122.4094, 37.7749], [-122.4194, 37.7749]]]
+      }
+    })
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    
+    // Setup default mocks
+    networkUtils.getCurrentState.mockResolvedValue(mockNetworkState);
+    networkUtils.addListener.mockReturnValue(jest.fn());
+    networkUtils.testConnectivity.mockResolvedValue(true);
+    
+    database.getLocations.mockResolvedValue(mockLocations);
+    database.getRevealedAreas.mockResolvedValue(mockRevealedAreas);
+    database.getStatisticsCache.mockResolvedValue(null);
+    database.saveStatisticsCache.mockResolvedValue();
+  });
+
+  describe('Online Mode', () => {
+    it('should fetch statistics when online', async () => {
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.data).toBeTruthy();
+      expect(result.current.data.dataSource).toBe('online');
+      expect(result.current.isOffline).toBe(false);
+      expect(result.current.error).toBeNull();
+    });
+
+    it('should update network status when connection changes', async () => {
+      const mockListener = jest.fn();
+      networkUtils.addListener.mockReturnValue(() => {});
+      networkUtils.addListener.mockImplementation((callback) => {
+        mockListener.mockImplementation(callback);
+        return jest.fn();
+      });
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      // Simulate network change to offline
+      act(() => {
+        mockListener({
+          isConnected: false,
+          isInternetReachable: false,
+          type: 'none',
+          details: {}
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isOffline).toBe(true);
+      });
+    });
+
+    it('should refresh data when coming back online', async () => {
+      const mockListener = jest.fn();
+      networkUtils.addListener.mockImplementation((callback) => {
+        mockListener.mockImplementation(callback);
+        return jest.fn();
+      });
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      // Start offline
+      act(() => {
+        mockListener({
+          isConnected: false,
+          isInternetReachable: false,
+          type: 'none',
+          details: {}
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isOffline).toBe(true);
+      });
+
+      // Come back online
+      act(() => {
+        mockListener({
+          isConnected: true,
+          isInternetReachable: true,
+          type: 'wifi',
+          details: {}
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isOffline).toBe(false);
+      });
+    });
+  });
+
+  describe('Offline Mode', () => {
+    beforeEach(() => {
+      networkUtils.getCurrentState.mockResolvedValue({
+        isConnected: false,
+        isInternetReachable: false,
+        type: 'none',
+        details: {}
+      });
+    });
+
+    it('should work in offline mode with cached data', async () => {
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.data).toBeTruthy();
+      expect(result.current.data.dataSource).toBe('offline');
+      expect(result.current.isOffline).toBe(true);
+      expect(result.current.data.isOfflineData).toBe(true);
+    });
+
+    it('should calculate basic statistics offline', async () => {
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.data).toBeTruthy();
+      });
+
+      // Should be able to calculate distance and world exploration offline
+      expect(result.current.data.totalDistance).toBeDefined();
+      expect(result.current.data.worldExploration).toBeDefined();
+      expect(result.current.offlineCapabilities.canCalculateDistance).toBe(true);
+      expect(result.current.offlineCapabilities.canCalculateWorldExploration).toBe(true);
+    });
+
+    it('should use cached data when available', async () => {
+      const cachedData = {
+        totalDistance: { miles: 10, kilometers: 16 },
+        worldExploration: { percentage: 0.001, totalAreaKm2: 510072000, exploredAreaKm2: 5 },
+        uniqueRegions: { countries: 1, states: 1, cities: 1 },
+        remainingRegions: { countries: 194, states: 3141, cities: 9999 },
+        hierarchicalBreakdown: [],
+        lastUpdated: Date.now() - 1000,
+        isOfflineData: true,
+        dataSource: 'cache',
+        networkStatus: { isConnected: false, connectionType: 'none' }
+      };
+
+      database.getStatisticsCache.mockResolvedValue({
+        cache_value: JSON.stringify(cachedData),
+        timestamp: Date.now() - 1000
+      });
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.data).toBeTruthy();
+      });
+
+      expect(result.current.data.dataSource).toBe('cache');
+      expect(result.current.data.totalDistance.miles).toBe(10);
+    });
+
+    it('should handle expired cache gracefully', async () => {
+      const expiredCachedData = {
+        cache_value: JSON.stringify({}),
+        timestamp: Date.now() - (25 * 60 * 60 * 1000) // 25 hours ago
+      };
+
+      database.getStatisticsCache.mockResolvedValue(expiredCachedData);
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.data).toBeTruthy();
+      });
+
+      // Should calculate fresh data instead of using expired cache
+      expect(result.current.data.dataSource).toBe('offline');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle database errors gracefully', async () => {
+      database.getLocations.mockRejectedValue(new Error('Database error'));
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.error).toBeTruthy();
+    });
+
+    it('should fallback to cache on calculation errors', async () => {
+      const cachedData = {
+        totalDistance: { miles: 5, kilometers: 8 },
+        worldExploration: { percentage: 0.001, totalAreaKm2: 510072000, exploredAreaKm2: 5 },
+        uniqueRegions: { countries: 1, states: 1, cities: 1 },
+        remainingRegions: { countries: 194, states: 3141, cities: 9999 },
+        hierarchicalBreakdown: [],
+        lastUpdated: Date.now() - 1000,
+        isOfflineData: true,
+        dataSource: 'cache',
+        networkStatus: { isConnected: true, connectionType: 'wifi' }
+      };
+
+      database.getStatisticsCache.mockResolvedValue({
+        cache_value: JSON.stringify(cachedData),
+        timestamp: Date.now() - 1000
+      });
+
+      // Mock calculation error
+      database.getLocations.mockRejectedValue(new Error('Calculation failed'));
+
+      const { result } = renderHook(() => useOfflineStatistics({
+        fallbackToCache: true
+      }));
+
+      await waitFor(() => {
+        expect(result.current.data).toBeTruthy();
+      });
+
+      expect(result.current.data.dataSource).toBe('cache');
+      expect(result.current.error).toContain('Using cached data');
+    });
+
+    it('should handle network errors during online operations', async () => {
+      networkUtils.getCurrentState.mockRejectedValue(new Error('Network error'));
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      // Should still work with offline capabilities
+      expect(result.current.data || result.current.error).toBeTruthy();
+    });
+  });
+
+  describe('Retry Functionality', () => {
+    it('should retry connection successfully', async () => {
+      networkUtils.testConnectivity.mockResolvedValue(true);
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      const retryResult = await act(async () => {
+        return await result.current.retryConnection();
+      });
+
+      expect(retryResult).toBe(true);
+      expect(networkUtils.testConnectivity).toHaveBeenCalled();
+    });
+
+    it('should handle failed retry attempts', async () => {
+      networkUtils.testConnectivity.mockResolvedValue(false);
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      const retryResult = await act(async () => {
+        return await result.current.retryConnection();
+      });
+
+      expect(retryResult).toBe(false);
+    });
+  });
+
+  describe('Forced Modes', () => {
+    it('should force offline mode', async () => {
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      act(() => {
+        result.current.forceOfflineMode();
+      });
+
+      await waitFor(() => {
+        expect(result.current.data?.dataSource).toBe('offline');
+      });
+    });
+
+    it('should force online mode', async () => {
+      // Start in offline state
+      networkUtils.getCurrentState.mockResolvedValue({
+        isConnected: false,
+        isInternetReachable: false,
+        type: 'none',
+        details: {}
+      });
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      // Force online mode
+      act(() => {
+        result.current.forceOnlineMode();
+      });
+
+      await waitFor(() => {
+        expect(result.current.data?.dataSource).toBe('online');
+      });
+    });
+  });
+
+  describe('Cache Management', () => {
+    it('should clear cache successfully', async () => {
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      await act(async () => {
+        await result.current.clearCache();
+      });
+
+      expect(database.clearAllStatisticsCache).toHaveBeenCalled();
+    });
+
+    it('should handle cache clear errors', async () => {
+      database.clearAllStatisticsCache.mockRejectedValue(new Error('Cache clear failed'));
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      // Should not throw error
+      await act(async () => {
+        await result.current.clearCache();
+      });
+
+      expect(database.clearAllStatisticsCache).toHaveBeenCalled();
+    });
+  });
+
+  describe('Offline Capabilities Assessment', () => {
+    it('should assess capabilities correctly with full data', async () => {
+      // Mock locations with geography data
+      const locationsWithGeography = [
+        { id: 1, latitude: 37.7749, longitude: -122.4194, country: 'United States', state: 'California', city: 'San Francisco' }
+      ];
+
+      // Mock the convertToLocationWithGeography function
+      jest.doMock('../utils/geographicHierarchy', () => ({
+        convertToLocationWithGeography: jest.fn().mockResolvedValue(locationsWithGeography),
+        buildGeographicHierarchy: jest.fn().mockResolvedValue([]),
+        calculateExplorationPercentages: jest.fn().mockResolvedValue([])
+      }));
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.offlineCapabilities.canCalculateDistance).toBe(true);
+      expect(result.current.offlineCapabilities.canCalculateWorldExploration).toBe(true);
+      expect(result.current.offlineCapabilities.canCalculateBasicRegions).toBe(true);
+      expect(result.current.offlineCapabilities.canCalculateHierarchy).toBe(true);
+    });
+
+    it('should assess limited capabilities with minimal data', async () => {
+      database.getRevealedAreas.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useOfflineStatistics());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.offlineCapabilities.canCalculateDistance).toBe(true);
+      expect(result.current.offlineCapabilities.canCalculateWorldExploration).toBe(false);
+    });
+  });
+});

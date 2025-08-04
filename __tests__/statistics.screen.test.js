@@ -30,6 +30,44 @@ jest.mock('@/components/StatisticsCard', () => ({
   },
 }));
 
+// Mock the HierarchicalView component
+jest.mock('@/components/HierarchicalView', () => ({
+  HierarchicalView: ({ data, onToggleExpand, testID }) => {
+    const { Text, View, TouchableOpacity } = require('react-native');
+    
+    if (!data || data.length === 0) {
+      return (
+        <View testID={testID}>
+          <Text>No geographic data available</Text>
+        </View>
+      );
+    }
+    
+    return (
+      <View testID={testID}>
+        {data.map((item, index) => (
+          <TouchableOpacity
+            key={item.id || index}
+            testID={`hierarchical-item-${item.id || index}`}
+            onPress={() => onToggleExpand(item)}
+          >
+            <Text>{item.name} - {item.explorationPercentage.toFixed(1)}%</Text>
+            {item.children && item.isExpanded && (
+              <View style={{ marginLeft: 20 }}>
+                {item.children.map((child, childIndex) => (
+                  <Text key={child.id || childIndex}>
+                    {child.name} - {child.explorationPercentage.toFixed(1)}%
+                  </Text>
+                ))}
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  },
+}));
+
 // Mock themed components
 jest.mock('@/components/ThemedText', () => ({
   ThemedText: ({ children, ...props }) => {
@@ -74,6 +112,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: null,
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByText, getAllByText } = render(<StatisticsScreen />);
@@ -103,6 +142,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: null,
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByText, getByTestId } = render(<StatisticsScreen />);
@@ -142,6 +182,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: 'Network error',
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByText } = render(<StatisticsScreen />);
@@ -167,6 +208,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: null,
       refreshData: mockRefreshData,
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -197,6 +239,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: true,
       error: null,
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -224,6 +267,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: null,
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -253,6 +297,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: null,
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -273,6 +318,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: 'Database connection failed',
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByText } = render(<StatisticsScreen />);
@@ -290,6 +336,7 @@ describe('StatisticsScreen', () => {
       isRefreshing: false,
       error: null,
       refreshData: jest.fn(),
+      toggleHierarchyNode: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -301,5 +348,237 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('loading-card-3')).toBeTruthy();
     expect(getByTestId('loading-card-4')).toBeTruthy();
     expect(getByTestId('loading-card-5')).toBeTruthy();
+  });
+
+  describe('Hierarchical Geographic Breakdown', () => {
+    it('renders hierarchical section with data', async () => {
+      const mockHierarchicalData = [
+        {
+          id: 'usa',
+          type: 'country',
+          name: 'United States',
+          code: 'US',
+          explorationPercentage: 2.5,
+          isExpanded: true,
+          children: [
+            {
+              id: 'ca',
+              type: 'state',
+              name: 'California',
+              code: 'CA',
+              explorationPercentage: 15.2,
+              isExpanded: false,
+              children: [
+                {
+                  id: 'sf',
+                  type: 'city',
+                  name: 'San Francisco',
+                  explorationPercentage: 45.8,
+                  children: []
+                }
+              ]
+            }
+          ]
+        }
+      ];
+
+      const mockData = {
+        totalDistance: { miles: 100, kilometers: 160 },
+        worldExploration: { percentage: 0.001, exploredAreaKm2: 50, totalAreaKm2: 510072000 },
+        uniqueRegions: { countries: 1, states: 1, cities: 1 },
+        remainingRegions: { countries: 194, states: 3141, cities: 9999 },
+        hierarchicalBreakdown: mockHierarchicalData,
+        lastUpdated: Date.now(),
+      };
+
+      mockUseStatistics.mockReturnValue({
+        data: mockData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        refreshData: jest.fn(),
+        toggleHierarchyNode: jest.fn(),
+      });
+
+      const { getByText, getByTestId } = render(<StatisticsScreen />);
+
+      // Check section header
+      expect(getByText('Geographic Breakdown')).toBeTruthy();
+      expect(getByText('Exploration by region')).toBeTruthy();
+
+      // Check hierarchical view is rendered
+      expect(getByTestId('geographic-hierarchy')).toBeTruthy();
+
+      // Check hierarchical data is displayed
+      expect(getByText('United States - 2.5%')).toBeTruthy();
+    });
+
+    it('renders empty state when no hierarchical data', async () => {
+      const mockData = {
+        totalDistance: { miles: 0, kilometers: 0 },
+        worldExploration: { percentage: 0, exploredAreaKm2: 0, totalAreaKm2: 510072000 },
+        uniqueRegions: { countries: 0, states: 0, cities: 0 },
+        remainingRegions: { countries: 195, states: 3142, cities: 10000 },
+        hierarchicalBreakdown: [],
+        lastUpdated: Date.now(),
+      };
+
+      mockUseStatistics.mockReturnValue({
+        data: mockData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        refreshData: jest.fn(),
+        toggleHierarchyNode: jest.fn(),
+      });
+
+      const { getByText, getByTestId } = render(<StatisticsScreen />);
+
+      // Check section header
+      expect(getByText('Geographic Breakdown')).toBeTruthy();
+      expect(getByText('Exploration by region')).toBeTruthy();
+
+      // Check empty state
+      expect(getByText('🗺️')).toBeTruthy();
+      expect(getByText('No Geographic Data')).toBeTruthy();
+      expect(getByText('Start exploring to see your geographic breakdown')).toBeTruthy();
+    });
+
+    it('renders loading state for hierarchical data', async () => {
+      const mockData = {
+        totalDistance: { miles: 100, kilometers: 160 },
+        worldExploration: { percentage: 0.001, exploredAreaKm2: 50, totalAreaKm2: 510072000 },
+        uniqueRegions: { countries: 1, states: 1, cities: 1 },
+        remainingRegions: { countries: 194, states: 3141, cities: 9999 },
+        hierarchicalBreakdown: [],
+        lastUpdated: Date.now(),
+      };
+
+      mockUseStatistics.mockReturnValue({
+        data: mockData,
+        isLoading: true,
+        isRefreshing: false,
+        error: null,
+        refreshData: jest.fn(),
+        toggleHierarchyNode: jest.fn(),
+      });
+
+      const { getByText } = render(<StatisticsScreen />);
+
+      // Check section header
+      expect(getByText('Geographic Breakdown')).toBeTruthy();
+      expect(getByText('Exploration by region')).toBeTruthy();
+
+      // Check loading state
+      expect(getByText('Loading geographic data...')).toBeTruthy();
+    });
+
+    it('handles hierarchy node toggle correctly', async () => {
+      const mockToggleHierarchyNode = jest.fn();
+      const mockHierarchicalData = [
+        {
+          id: 'usa',
+          type: 'country',
+          name: 'United States',
+          code: 'US',
+          explorationPercentage: 2.5,
+          isExpanded: false,
+          children: [
+            {
+              id: 'ca',
+              type: 'state',
+              name: 'California',
+              code: 'CA',
+              explorationPercentage: 15.2,
+              children: []
+            }
+          ]
+        }
+      ];
+
+      const mockData = {
+        totalDistance: { miles: 100, kilometers: 160 },
+        worldExploration: { percentage: 0.001, exploredAreaKm2: 50, totalAreaKm2: 510072000 },
+        uniqueRegions: { countries: 1, states: 1, cities: 1 },
+        remainingRegions: { countries: 194, states: 3141, cities: 9999 },
+        hierarchicalBreakdown: mockHierarchicalData,
+        lastUpdated: Date.now(),
+      };
+
+      mockUseStatistics.mockReturnValue({
+        data: mockData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        refreshData: jest.fn(),
+        toggleHierarchyNode: mockToggleHierarchyNode,
+      });
+
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      // Get the hierarchical item and simulate tap
+      const hierarchicalItem = getByTestId('hierarchical-item-usa');
+      expect(hierarchicalItem).toBeTruthy();
+
+      // Simulate press on the item
+      hierarchicalItem.props.onPress();
+
+      // Check that toggle function was called
+      expect(mockToggleHierarchyNode).toHaveBeenCalledWith(mockHierarchicalData[0]);
+    });
+
+    it('does not render hierarchical section when there is an error', async () => {
+      mockUseStatistics.mockReturnValue({
+        data: null,
+        isLoading: false,
+        isRefreshing: false,
+        error: 'Network error',
+        refreshData: jest.fn(),
+        toggleHierarchyNode: jest.fn(),
+      });
+
+      const { queryByText } = render(<StatisticsScreen />);
+
+      // Check that hierarchical section is not rendered
+      expect(queryByText('Geographic Breakdown')).toBeFalsy();
+      expect(queryByText('Exploration by region')).toBeFalsy();
+    });
+
+    it('renders hierarchical section with proper spacing and visual separation', async () => {
+      const mockData = {
+        totalDistance: { miles: 100, kilometers: 160 },
+        worldExploration: { percentage: 0.001, exploredAreaKm2: 50, totalAreaKm2: 510072000 },
+        uniqueRegions: { countries: 1, states: 1, cities: 1 },
+        remainingRegions: { countries: 194, states: 3141, cities: 9999 },
+        hierarchicalBreakdown: [
+          {
+            id: 'usa',
+            type: 'country',
+            name: 'United States',
+            explorationPercentage: 2.5,
+            children: []
+          }
+        ],
+        lastUpdated: Date.now(),
+      };
+
+      mockUseStatistics.mockReturnValue({
+        data: mockData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        refreshData: jest.fn(),
+        toggleHierarchyNode: jest.fn(),
+      });
+
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      // Check that hierarchical view is rendered with proper testID
+      expect(getByTestId('geographic-hierarchy')).toBeTruthy();
+
+      // Check that statistics cards are still rendered (proper separation)
+      expect(getByTestId('distance-card')).toBeTruthy();
+      expect(getByTestId('world-exploration-card')).toBeTruthy();
+    });
   });
 });
