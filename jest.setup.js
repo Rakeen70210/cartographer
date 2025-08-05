@@ -109,6 +109,13 @@ jest.mock('react-native', () => {
       addListener: jest.fn(),
       removeListener: jest.fn(),
     })),
+    AccessibilityInfo: {
+      addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+      removeEventListener: jest.fn(),
+      isReduceMotionEnabled: jest.fn(() => Promise.resolve(false)),
+      isScreenReaderEnabled: jest.fn(() => Promise.resolve(false)),
+      announceForAccessibility: jest.fn(),
+    },
   };
 });
 
@@ -277,6 +284,66 @@ jest.mock('expo-task-manager', () => ({
   isTaskRegisteredAsync: jest.fn(),
 }));
 
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: jest.fn(() => ({
+    execSync: jest.fn(),
+    getAllSync: jest.fn(() => []),
+    getFirstSync: jest.fn(() => null),
+    runSync: jest.fn(() => ({ changes: 0, lastInsertRowId: 0 })),
+    prepareSync: jest.fn(() => ({
+      executeSync: jest.fn(() => ({ changes: 0, lastInsertRowId: 0 })),
+      getAllSync: jest.fn(() => []),
+      getFirstSync: jest.fn(() => null),
+      finalizeSync: jest.fn(),
+    })),
+    closeSync: jest.fn(),
+  })),
+}));
+
+jest.mock('expo-asset', () => ({
+  Asset: {
+    fromModule: jest.fn(() => ({
+      downloadAsync: jest.fn(),
+      uri: 'mock-uri',
+    })),
+  },
+}));
+
+jest.mock('expo-constants', () => ({
+  default: {
+    expoConfig: {
+      name: 'Test App',
+      version: '1.0.0',
+    },
+    platform: {
+      ios: {
+        platform: 'ios',
+      },
+    },
+  },
+}));
+
+jest.mock('@react-native-community/netinfo', () => {
+  const mockNetInfo = {
+    fetch: jest.fn(() => Promise.resolve({
+      type: 'wifi',
+      isConnected: true,
+      isInternetReachable: true,
+    })),
+    addEventListener: jest.fn(() => jest.fn()),
+  };
+  
+  return {
+    __esModule: true,
+    default: mockNetInfo,
+    useNetInfo: jest.fn(() => ({
+      type: 'wifi',
+      isConnected: true,
+      isInternetReachable: true,
+    })),
+  };
+});
+
 jest.mock('@rnmapbox/maps', () => ({
   setAccessToken: jest.fn(),
   StyleURL: {
@@ -290,6 +357,25 @@ jest.mock('@rnmapbox/maps', () => ({
   LineLayer: 'LineLayer',
   CircleLayer: 'CircleLayer',
 }));
+
+// Mock react-native-safe-area-context
+jest.mock('react-native-safe-area-context', () => {
+  const mockComponent = (name) => {
+    const MockedComponent = (props) => {
+      const React = require('react');
+      return React.createElement('View', props, props.children);
+    };
+    MockedComponent.displayName = name;
+    return MockedComponent;
+  };
+
+  return {
+    SafeAreaView: mockComponent('SafeAreaView'),
+    SafeAreaProvider: mockComponent('SafeAreaProvider'),
+    useSafeAreaInsets: jest.fn(() => ({ top: 44, bottom: 34, left: 0, right: 0 })),
+    useSafeAreaFrame: jest.fn(() => ({ x: 0, y: 0, width: 375, height: 812 })),
+  };
+});
 
 // Silence console warnings during tests
 global.console = {

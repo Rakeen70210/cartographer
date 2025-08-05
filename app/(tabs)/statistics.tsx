@@ -1,10 +1,12 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
+    AccessibilityInfo,
+    Animated,
     Dimensions,
     RefreshControl,
     ScrollView,
     StyleSheet,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -17,7 +19,12 @@ import { ThemedView } from '@/components/ThemedView';
 import { useOfflineStatistics } from '@/hooks/useOfflineStatistics';
 import { useThemeColor } from '@/hooks/useThemeColor';
 
-const { width: screenWidth } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+// Responsive breakpoints
+const isTablet = screenWidth >= 768;
+const isLandscape = screenWidth > screenHeight;
+const isSmallScreen = screenWidth < 375;
 
 export default function StatisticsScreen() {
   const {
@@ -35,6 +42,66 @@ export default function StatisticsScreen() {
   const backgroundColor = useThemeColor({}, 'background');
   const errorColor = useThemeColor({ light: '#EF4444', dark: '#F87171' }, 'text');
 
+  // Animation values for smooth transitions
+  const fadeAnim = new Animated.Value(isLoading ? 0 : 1);
+  const slideAnim = new Animated.Value(isLoading ? 50 : 0);
+  const [isReduceMotionEnabled, setIsReduceMotionEnabled] = React.useState(false);
+
+  // Check for reduced motion preference
+  React.useEffect(() => {
+    const checkReduceMotion = async () => {
+      try {
+        const isEnabled = await AccessibilityInfo.isReduceMotionEnabled();
+        setIsReduceMotionEnabled(isEnabled);
+      } catch (error) {
+        // Fallback to false if unable to check
+        setIsReduceMotionEnabled(false);
+      }
+    };
+
+    checkReduceMotion();
+
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setIsReduceMotionEnabled
+    );
+
+    return () => subscription?.remove();
+  }, []);
+
+  // Animate content when loading state changes (respecting reduced motion)
+  React.useEffect(() => {
+    const animationDuration = isReduceMotionEnabled ? 0 : (isLoading ? 200 : 300);
+    
+    if (isLoading) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: animationDuration,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: isReduceMotionEnabled ? 0 : 50,
+          duration: animationDuration,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: animationDuration,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: animationDuration,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isLoading, isReduceMotionEnabled]);
+
   const handleRefresh = useCallback(async () => {
     await refreshData();
   }, [refreshData]);
@@ -43,16 +110,68 @@ export default function StatisticsScreen() {
     return await retryConnection();
   }, [retryConnection]);
 
+  const renderEmptyState = () => (
+    <ThemedView 
+      style={styles.emptyStateContainer}
+      accessible={true}
+      accessibilityLabel="No exploration data available"
+    >
+      <ThemedText 
+        style={styles.emptyStateIcon}
+        accessibilityLabel="Compass icon"
+      >
+        🧭
+      </ThemedText>
+      <ThemedText 
+        style={styles.emptyStateTitle}
+        accessibilityRole="header"
+      >
+        Start Your Journey
+      </ThemedText>
+      <ThemedText 
+        style={styles.emptyStateSubtitle}
+        accessibilityLabel="Begin exploring to see your statistics"
+      >
+        Begin exploring to see your statistics
+      </ThemedText>
+      <ThemedText 
+        style={styles.emptyStateHint}
+        accessibilityHint="Go to the Map tab to start tracking your exploration"
+      >
+        📍 Go to the Map tab to start tracking your exploration
+      </ThemedText>
+    </ThemedView>
+  );
+
   const renderErrorState = () => (
-    <ThemedView style={styles.errorContainer}>
-      <ThemedText style={styles.errorIcon}>⚠️</ThemedText>
-      <ThemedText style={[styles.errorText, { color: errorColor }]}>
+    <ThemedView 
+      style={styles.errorContainer}
+      accessible={true}
+      accessibilityRole="alert"
+      accessibilityLabel="Error loading statistics"
+    >
+      <ThemedText 
+        style={styles.errorIcon}
+        accessibilityLabel="Warning icon"
+      >
+        ⚠️
+      </ThemedText>
+      <ThemedText 
+        style={[styles.errorText, { color: errorColor }]}
+        accessibilityRole="header"
+      >
         Unable to load statistics
       </ThemedText>
-      <ThemedText style={styles.errorSubtext}>
+      <ThemedText 
+        style={styles.errorSubtext}
+        accessibilityLabel={`Error details: ${error || 'Please check your connection and try again'}`}
+      >
         {error || 'Please check your connection and try again'}
       </ThemedText>
-      <ThemedText style={styles.errorHint}>
+      <ThemedText 
+        style={styles.errorHint}
+        accessibilityHint="Pull down on the screen to refresh statistics"
+      >
         Pull down to refresh
       </ThemedText>
     </ThemedView>
@@ -69,7 +188,12 @@ export default function StatisticsScreen() {
     ];
 
     return (
-      <View style={styles.cardGrid}>
+      <View 
+        style={styles.cardGrid}
+        accessible={true}
+        accessibilityLabel="Loading statistics cards"
+        accessibilityLiveRegion="polite"
+      >
         {loadingCardTitles.map((title, index) => (
           <View key={index} style={styles.cardContainer}>
             <StatisticsCard
@@ -170,7 +294,11 @@ export default function StatisticsScreen() {
     ];
 
     return (
-      <View style={styles.cardGrid}>
+      <View 
+        style={styles.cardGrid}
+        accessible={false}
+        accessibilityLabel="Statistics overview cards"
+      >
         {cards.map((card, index) => (
           <View key={index} style={styles.cardContainer}>
             <StatisticsCard {...card} />
@@ -184,10 +312,18 @@ export default function StatisticsScreen() {
     <StatisticsErrorBoundary onRetry={handleRefresh}>
       <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
         <ThemedView style={styles.header}>
-          <ThemedText type="title" style={styles.headerTitle}>
+          <ThemedText 
+            type="title" 
+            style={styles.headerTitle}
+            accessibilityRole="header"
+            accessibilityHint="Main statistics page heading"
+          >
             Statistics
           </ThemedText>
-          <ThemedText style={styles.headerSubtitle}>
+          <ThemedText 
+            style={styles.headerSubtitle}
+            accessibilityLabel="Your exploration journey statistics"
+          >
             Your exploration journey
           </ThemedText>
         </ThemedView>
@@ -201,13 +337,7 @@ export default function StatisticsScreen() {
           onRetry={handleRetryConnection}
         />
 
-        {/* Partial Data Indicator */}
-        {data?.isPartialData && data?.failedCalculations && (
-          <PartialDataIndicator
-            failedCalculations={data.failedCalculations}
-            onRetry={handleRefresh}
-          />
-        )}
+
 
         <ScrollView
           style={styles.scrollView}
@@ -225,66 +355,118 @@ export default function StatisticsScreen() {
           showsVerticalScrollIndicator={false}
           testID="statistics-scroll-view"
         >
-          {error && !data ? renderErrorState() : null}
-          {isLoading && !data ? renderLoadingCards() : renderStatisticsCards()}
+          <Animated.View
+            style={{
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            }}
+          >
+            {error && !data ? renderErrorState() : null}
+            {isLoading && !data ? renderLoadingCards() : 
+             !data && !isLoading && !error ? renderEmptyState() : 
+             renderStatisticsCards()}
         
-        {/* Hierarchical Geographic Breakdown Section */}
-        {data && !error && (
-          <View style={styles.hierarchicalSection}>
-            <ThemedView style={styles.sectionHeader}>
-              <ThemedText type="subtitle" style={styles.sectionTitle}>
-                Geographic Breakdown
+            {/* Hierarchical Geographic Breakdown Section */}
+            {data && !error && (
+              <View style={styles.hierarchicalSection}>
+              <ThemedView style={styles.sectionHeader}>
+                <ThemedText 
+                  type="subtitle" 
+                  style={styles.sectionTitle}
+                  accessibilityRole="header"
+                  accessibilityHint="Geographic breakdown section heading"
+                >
+                  Geographic Breakdown
+                </ThemedText>
+                <ThemedText 
+                  style={styles.sectionSubtitle}
+                  accessibilityLabel="Exploration statistics organized by geographic region"
+                >
+                  Exploration by region
+                </ThemedText>
+              </ThemedView>
+              
+              <ThemedView style={styles.hierarchicalContainer}>
+                {isLoading ? (
+                  <View style={styles.hierarchicalLoading}>
+                    <ThemedText style={styles.loadingText}>
+                      Loading geographic data...
+                    </ThemedText>
+                  </View>
+                ) : data.hierarchicalBreakdown && data.hierarchicalBreakdown.length > 0 ? (
+                  <HierarchicalView
+                    data={data.hierarchicalBreakdown}
+                    onToggleExpand={toggleHierarchyNode}
+                    maxDepth={3}
+                    showProgressBars={true}
+                    testID="geographic-hierarchy"
+                  />
+                ) : (
+                  <View 
+                    style={styles.hierarchicalEmpty}
+                    accessible={true}
+                    accessibilityLabel="No geographic data available"
+                  >
+                    <ThemedText 
+                      style={styles.emptyIcon}
+                      accessibilityLabel="Map icon"
+                    >
+                      🗺️
+                    </ThemedText>
+                    <ThemedText 
+                      style={styles.emptyTitle}
+                      accessibilityRole="header"
+                    >
+                      No Geographic Data
+                    </ThemedText>
+                    <ThemedText 
+                      style={styles.emptySubtitle}
+                      accessibilityHint="Visit new locations to see geographic breakdown statistics"
+                    >
+                      Start exploring to see your geographic breakdown
+                    </ThemedText>
+                    <ThemedText 
+                      style={styles.emptyHint}
+                      accessibilityLabel="Tip: Go to the Map tab and visit new places to unlock statistics"
+                    >
+                      💡 Tip: Go to the Map tab and visit new places to unlock statistics
+                    </ThemedText>
+                  </View>
+                )}
+              </ThemedView>
+              </View>
+            )}
+
+            {/* Show data age indicator if data is stale */}
+            {data && !isLoading && !error && (
+              <View 
+                style={styles.dataAgeContainer}
+                accessible={true}
+                accessibilityLabel="Data last updated"
+              >
+              <ThemedText 
+                style={styles.dataAgeText}
+                accessibilityLabel={`Statistics last updated ${(() => {
+                  const now = new Date();
+                  const diffMinutes = Math.floor((now.getTime() - data.lastUpdated) / (1000 * 60));
+                  return diffMinutes < 1 ? 'just now' :
+                         diffMinutes < 60 ? `${diffMinutes} minutes ago` :
+                         diffMinutes < 1440 ? `${Math.floor(diffMinutes / 60)} hours ago` :
+                         `on ${new Date(data.lastUpdated).toLocaleDateString()}`;
+                })()}`}
+              >
+                {(() => {
+                  const now = new Date();
+                  const diffMinutes = Math.floor((now.getTime() - data.lastUpdated) / (1000 * 60));
+                  return diffMinutes < 1 ? 'Just now' :
+                         diffMinutes < 60 ? `${diffMinutes}m ago` :
+                         diffMinutes < 1440 ? `${Math.floor(diffMinutes / 60)}h ago` :
+                         new Date(data.lastUpdated).toLocaleDateString();
+                })()}
               </ThemedText>
-              <ThemedText style={styles.sectionSubtitle}>
-                Exploration by region
-              </ThemedText>
-            </ThemedView>
-            
-            <ThemedView style={styles.hierarchicalContainer}>
-              {isLoading ? (
-                <View style={styles.hierarchicalLoading}>
-                  <ThemedText style={styles.loadingText}>
-                    Loading geographic data...
-                  </ThemedText>
-                </View>
-              ) : data.hierarchicalBreakdown && data.hierarchicalBreakdown.length > 0 ? (
-                <HierarchicalView
-                  data={data.hierarchicalBreakdown}
-                  onToggleExpand={toggleHierarchyNode}
-                  maxDepth={3}
-                  showProgressBars={true}
-                  testID="geographic-hierarchy"
-                />
-              ) : (
-                <View style={styles.hierarchicalEmpty}>
-                  <ThemedText style={styles.emptyIcon}>🗺️</ThemedText>
-                  <ThemedText style={styles.emptyTitle}>
-                    No Geographic Data
-                  </ThemedText>
-                  <ThemedText style={styles.emptySubtitle}>
-                    Start exploring to see your geographic breakdown
-                  </ThemedText>
-                </View>
-              )}
-            </ThemedView>
-          </View>
-        )}
-        
-        {/* Show data age indicator if data is stale */}
-        {data && !isLoading && !error && (
-          <View style={styles.dataAgeContainer}>
-            <ThemedText style={styles.dataAgeText}>
-              {(() => {
-                const now = new Date();
-                const diffMinutes = Math.floor((now.getTime() - data.lastUpdated) / (1000 * 60));
-                return diffMinutes < 1 ? 'Just now' :
-                       diffMinutes < 60 ? `${diffMinutes}m ago` :
-                       diffMinutes < 1440 ? `${Math.floor(diffMinutes / 60)}h ago` :
-                       new Date(data.lastUpdated).toLocaleDateString();
-              })()}
-            </ThemedText>
-          </View>
-        )}
+              </View>
+            )}
+          </Animated.View>
         </ScrollView>
       </SafeAreaView>
     </StatisticsErrorBoundary>
@@ -296,8 +478,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: isSmallScreen ? 16 : 20,
+    paddingVertical: isSmallScreen ? 12 : 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(0,0,0,0.1)',
   },
@@ -319,11 +501,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
+    paddingHorizontal: isSmallScreen ? 8 : 12,
   },
   cardContainer: {
-    width: screenWidth > 600 ? '48%' : '100%',
-    marginBottom: 8,
+    width: isTablet 
+      ? (isLandscape ? '31%' : '48%') 
+      : (isLandscape ? '48%' : '100%'),
+    marginBottom: isSmallScreen ? 6 : 8,
   },
   errorContainer: {
     flex: 1,
@@ -356,8 +540,8 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   hierarchicalSection: {
-    marginTop: 24,
-    paddingHorizontal: 12,
+    marginTop: isSmallScreen ? 16 : 24,
+    paddingHorizontal: isSmallScreen ? 8 : 12,
   },
   sectionHeader: {
     paddingHorizontal: 8,
@@ -374,8 +558,8 @@ const styles = StyleSheet.create({
   hierarchicalContainer: {
     borderRadius: 12,
     overflow: 'hidden',
-    minHeight: 200,
-    maxHeight: 400,
+    minHeight: isSmallScreen ? 150 : 200,
+    maxHeight: isTablet ? 500 : (isLandscape ? 300 : 400),
   },
   hierarchicalLoading: {
     flex: 1,
@@ -409,6 +593,14 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     textAlign: 'center',
     lineHeight: 20,
+    marginBottom: 12,
+  },
+  emptyHint: {
+    fontSize: 12,
+    opacity: 0.6,
+    textAlign: 'center',
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
   dataAgeContainer: {
     alignItems: 'center',
@@ -419,5 +611,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.6,
     textAlign: 'center',
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 60,
+  },
+  emptyStateIcon: {
+    fontSize: 64,
+    marginBottom: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptyStateSubtitle: {
+    fontSize: 16,
+    opacity: 0.7,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  emptyStateHint: {
+    fontSize: 14,
+    opacity: 0.6,
+    textAlign: 'center',
+    lineHeight: 18,
+    fontStyle: 'italic',
   },
 });
