@@ -310,7 +310,7 @@ export default function StatisticsScreen() {
 
   return (
     <StatisticsErrorBoundary onRetry={handleRefresh}>
-      <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']} testID="statistics-screen">
         <ThemedView style={styles.header}>
           <ThemedText 
             type="title" 

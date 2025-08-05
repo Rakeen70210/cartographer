@@ -2,11 +2,11 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import StatisticsScreen from '../app/(tabs)/statistics';
 
-// Mock the useStatistics hook
-jest.mock('@/hooks/useStatistics', () => ({
+// Mock the useOfflineStatistics hook
+jest.mock('@/hooks/useOfflineStatistics', () => ({
   __esModule: true,
   default: jest.fn(),
-  useStatistics: jest.fn()
+  useOfflineStatistics: jest.fn()
 }));
 
 // Mock the components
@@ -96,7 +96,8 @@ jest.mock('@/hooks/useThemeColor', () => ({
   useThemeColor: jest.fn(() => '#FFFFFF')
 }));
 
-import { useStatistics } from '@/hooks/useStatistics';
+const { useOfflineStatistics } = require('@/hooks/useOfflineStatistics');
+
 
 describe('Statistics Screen Integration Tests', () => {
   const mockStatisticsData = {
@@ -144,15 +145,18 @@ describe('Statistics Screen Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     
-    useStatistics.mockReturnValue({
+    useOfflineStatistics.mockReturnValue({
       data: mockStatisticsData,
       isLoading: false,
       isRefreshing: false,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       lastUpdated: mockStatisticsData.lastUpdated,
       refreshData: mockRefreshData,
       clearCache: mockClearCache,
-      toggleHierarchyNode: mockToggleHierarchyNode
+      toggleHierarchyNode: mockToggleHierarchyNode,
+      retryConnection: jest.fn()
     });
   });
 
@@ -192,15 +196,18 @@ describe('Statistics Screen Integration Tests', () => {
 
   describe('Loading States', () => {
     test('shows loading state when data is loading', () => {
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: null,
         isLoading: true,
         isRefreshing: false,
         error: null,
+        isOffline: false,
+        networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
         lastUpdated: null,
         refreshData: mockRefreshData,
         clearCache: mockClearCache,
-        toggleHierarchyNode: mockToggleHierarchyNode
+        toggleHierarchyNode: mockToggleHierarchyNode,
+        retryConnection: jest.fn()
       });
 
       const { getByTestId } = render(<StatisticsScreen />);
@@ -212,7 +219,7 @@ describe('Statistics Screen Integration Tests', () => {
     });
 
     test('shows refreshing state correctly', () => {
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: mockStatisticsData,
         isLoading: false,
         isRefreshing: true,
@@ -234,7 +241,7 @@ describe('Statistics Screen Integration Tests', () => {
       // Start with loading state
       const { rerender, getByTestId } = render(<StatisticsScreen />);
       
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: null,
         isLoading: true,
         isRefreshing: false,
@@ -249,7 +256,7 @@ describe('Statistics Screen Integration Tests', () => {
       expect(getByTestId('distance-card-value')).toHaveTextContent('Loading...');
 
       // Update to loaded state
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: mockStatisticsData,
         isLoading: false,
         isRefreshing: false,
@@ -270,7 +277,7 @@ describe('Statistics Screen Integration Tests', () => {
 
   describe('Error Handling', () => {
     test('displays error state when statistics loading fails', () => {
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: null,
         isLoading: false,
         isRefreshing: false,
@@ -288,7 +295,7 @@ describe('Statistics Screen Integration Tests', () => {
     });
 
     test('shows retry functionality on error', () => {
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: null,
         isLoading: false,
         isRefreshing: false,
@@ -313,7 +320,7 @@ describe('Statistics Screen Integration Tests', () => {
         hierarchicalBreakdown: [] // Empty hierarchy
       };
 
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: partialData,
         isLoading: false,
         isRefreshing: false,
@@ -397,7 +404,7 @@ describe('Statistics Screen Integration Tests', () => {
         uniqueRegions: { countries: 0, states: 0, cities: 0 }
       };
 
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: zeroData,
         isLoading: false,
         isRefreshing: false,
@@ -421,7 +428,7 @@ describe('Statistics Screen Integration Tests', () => {
         uniqueRegions: { countries: 195, states: 3142, cities: 50000 }
       };
 
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: largeData,
         isLoading: false,
         isRefreshing: false,
@@ -478,7 +485,7 @@ describe('Statistics Screen Integration Tests', () => {
         hierarchicalBreakdown: largeHierarchy
       };
 
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: largeData,
         isLoading: false,
         isRefreshing: false,
@@ -508,7 +515,7 @@ describe('Statistics Screen Integration Tests', () => {
           lastUpdated: Date.now()
         };
 
-        useStatistics.mockReturnValue({
+        useOfflineStatistics.mockReturnValue({
           data: updatedData,
           isLoading: false,
           isRefreshing: false,
@@ -528,7 +535,7 @@ describe('Statistics Screen Integration Tests', () => {
 
   describe('Edge Cases', () => {
     test('handles undefined data gracefully', () => {
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: undefined,
         isLoading: false,
         isRefreshing: false,
@@ -545,7 +552,7 @@ describe('Statistics Screen Integration Tests', () => {
     });
 
     test('handles null data gracefully', () => {
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: null,
         isLoading: false,
         isRefreshing: false,
@@ -562,7 +569,7 @@ describe('Statistics Screen Integration Tests', () => {
     });
 
     test('handles component unmounting during data loading', () => {
-      useStatistics.mockReturnValue({
+      useOfflineStatistics.mockReturnValue({
         data: null,
         isLoading: true,
         isRefreshing: false,

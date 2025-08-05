@@ -2,9 +2,9 @@ import { render } from '@testing-library/react-native';
 import React from 'react';
 import StatisticsScreen from '../app/(tabs)/statistics';
 
-// Mock the useStatistics hook
-jest.mock('@/hooks/useStatistics', () => ({
-  useStatistics: jest.fn(),
+// Mock the useOfflineStatistics hook
+jest.mock('@/hooks/useOfflineStatistics', () => ({
+  useOfflineStatistics: jest.fn(),
 }));
 
 // Mock the StatisticsCard component
@@ -83,6 +83,36 @@ jest.mock('@/components/ThemedView', () => ({
   },
 }));
 
+// Mock the OfflineIndicator component
+jest.mock('@/components/OfflineIndicator', () => ({
+  OfflineIndicator: ({ isOffline, offlineReason, dataSource, lastOnlineTime, onRetry }) => {
+    const { View, Text, TouchableOpacity } = require('react-native');
+    
+    if (!isOffline) return null;
+    
+    return (
+      <View testID="offline-indicator">
+        <Text>Offline Mode</Text>
+        {offlineReason && <Text>{offlineReason}</Text>}
+        {dataSource && <Text>Data source: {dataSource}</Text>}
+        {onRetry && (
+          <TouchableOpacity onPress={onRetry} testID="retry-connection">
+            <Text>Retry</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  },
+}));
+
+// Mock the StatisticsErrorBoundary component
+jest.mock('@/components/StatisticsErrorBoundary', () => ({
+  StatisticsErrorBoundary: ({ children, onRetry }) => {
+    const { View } = require('react-native');
+    return <View>{children}</View>;
+  },
+}));
+
 // Mock hooks
 jest.mock('@/hooks/useThemeColor', () => ({
   useThemeColor: () => '#000000',
@@ -99,20 +129,23 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 describe('StatisticsScreen', () => {
-  const mockUseStatistics = require('@/hooks/useStatistics').useStatistics;
+  const mockUseOfflineStatistics = require('@/hooks/useOfflineStatistics').useOfflineStatistics;
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('renders loading state correctly', async () => {
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: null,
       isLoading: true,
       isRefreshing: false,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByText, getAllByText } = render(<StatisticsScreen />);
@@ -136,13 +169,16 @@ describe('StatisticsScreen', () => {
       lastUpdated: 1640995200000, // Jan 1, 2022 00:00:00 GMT
     };
 
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: mockData,
       isLoading: false,
       isRefreshing: false,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByText, getByTestId } = render(<StatisticsScreen />);
@@ -176,13 +212,16 @@ describe('StatisticsScreen', () => {
   });
 
   it('renders error state correctly', async () => {
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: null,
       isLoading: false,
       isRefreshing: false,
       error: 'Network error',
+      isOffline: false,
+      networkStatus: { isConnected: false, connectionType: 'none', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByText } = render(<StatisticsScreen />);
@@ -195,7 +234,7 @@ describe('StatisticsScreen', () => {
   it('handles pull-to-refresh correctly', async () => {
     const mockRefreshData = jest.fn();
     
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: {
         totalDistance: { miles: 0, kilometers: 0 },
         worldExploration: { percentage: 0, exploredAreaKm2: 0, totalAreaKm2: 510072000 },
@@ -207,8 +246,11 @@ describe('StatisticsScreen', () => {
       isLoading: false,
       isRefreshing: false,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       refreshData: mockRefreshData,
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -226,7 +268,7 @@ describe('StatisticsScreen', () => {
   });
 
   it('displays refreshing state correctly', async () => {
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: {
         totalDistance: { miles: 0, kilometers: 0 },
         worldExploration: { percentage: 0, exploredAreaKm2: 0, totalAreaKm2: 510072000 },
@@ -238,8 +280,11 @@ describe('StatisticsScreen', () => {
       isLoading: false,
       isRefreshing: true,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -261,13 +306,16 @@ describe('StatisticsScreen', () => {
       lastUpdated: Date.now(),
     };
 
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: mockData,
       isLoading: false,
       isRefreshing: false,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -291,13 +339,16 @@ describe('StatisticsScreen', () => {
       lastUpdated: 1640995200000, // Jan 1, 2022 00:00:00 GMT
     };
 
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: mockData,
       isLoading: false,
       isRefreshing: false,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -312,13 +363,16 @@ describe('StatisticsScreen', () => {
   });
 
   it('shows enhanced error state with helpful messaging', async () => {
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: null,
       isLoading: false,
       isRefreshing: false,
       error: 'Database connection failed',
+      isOffline: false,
+      networkStatus: { isConnected: false, connectionType: 'none', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByText } = render(<StatisticsScreen />);
@@ -330,13 +384,16 @@ describe('StatisticsScreen', () => {
   });
 
   it('shows loading cards with proper titles', async () => {
-    mockUseStatistics.mockReturnValue({
+    mockUseOfflineStatistics.mockReturnValue({
       data: null,
       isLoading: true,
       isRefreshing: false,
       error: null,
+      isOffline: false,
+      networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
       refreshData: jest.fn(),
       toggleHierarchyNode: jest.fn(),
+      retryConnection: jest.fn(),
     });
 
     const { getByTestId } = render(<StatisticsScreen />);
@@ -391,13 +448,16 @@ describe('StatisticsScreen', () => {
         lastUpdated: Date.now(),
       };
 
-      mockUseStatistics.mockReturnValue({
+      mockUseOfflineStatistics.mockReturnValue({
         data: mockData,
         isLoading: false,
         isRefreshing: false,
         error: null,
+        isOffline: false,
+        networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
         refreshData: jest.fn(),
         toggleHierarchyNode: jest.fn(),
+        retryConnection: jest.fn(),
       });
 
       const { getByText, getByTestId } = render(<StatisticsScreen />);
@@ -423,13 +483,16 @@ describe('StatisticsScreen', () => {
         lastUpdated: Date.now(),
       };
 
-      mockUseStatistics.mockReturnValue({
+      mockUseOfflineStatistics.mockReturnValue({
         data: mockData,
         isLoading: false,
         isRefreshing: false,
         error: null,
+        isOffline: false,
+        networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
         refreshData: jest.fn(),
         toggleHierarchyNode: jest.fn(),
+        retryConnection: jest.fn(),
       });
 
       const { getByText, getByTestId } = render(<StatisticsScreen />);
@@ -454,13 +517,16 @@ describe('StatisticsScreen', () => {
         lastUpdated: Date.now(),
       };
 
-      mockUseStatistics.mockReturnValue({
+      mockUseOfflineStatistics.mockReturnValue({
         data: mockData,
         isLoading: true,
         isRefreshing: false,
         error: null,
+        isOffline: false,
+        networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
         refreshData: jest.fn(),
         toggleHierarchyNode: jest.fn(),
+        retryConnection: jest.fn(),
       });
 
       const { getByText } = render(<StatisticsScreen />);
@@ -505,13 +571,16 @@ describe('StatisticsScreen', () => {
         lastUpdated: Date.now(),
       };
 
-      mockUseStatistics.mockReturnValue({
+      mockUseOfflineStatistics.mockReturnValue({
         data: mockData,
         isLoading: false,
         isRefreshing: false,
         error: null,
+        isOffline: false,
+        networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
         refreshData: jest.fn(),
         toggleHierarchyNode: mockToggleHierarchyNode,
+        retryConnection: jest.fn(),
       });
 
       const { getByTestId } = render(<StatisticsScreen />);
@@ -528,13 +597,16 @@ describe('StatisticsScreen', () => {
     });
 
     it('does not render hierarchical section when there is an error', async () => {
-      mockUseStatistics.mockReturnValue({
+      mockUseOfflineStatistics.mockReturnValue({
         data: null,
         isLoading: false,
         isRefreshing: false,
         error: 'Network error',
+        isOffline: false,
+        networkStatus: { isConnected: false, connectionType: 'none', lastOnlineTime: Date.now() },
         refreshData: jest.fn(),
         toggleHierarchyNode: jest.fn(),
+        retryConnection: jest.fn(),
       });
 
       const { queryByText } = render(<StatisticsScreen />);
@@ -562,13 +634,16 @@ describe('StatisticsScreen', () => {
         lastUpdated: Date.now(),
       };
 
-      mockUseStatistics.mockReturnValue({
+      mockUseOfflineStatistics.mockReturnValue({
         data: mockData,
         isLoading: false,
         isRefreshing: false,
         error: null,
+        isOffline: false,
+        networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
         refreshData: jest.fn(),
         toggleHierarchyNode: jest.fn(),
+        retryConnection: jest.fn(),
       });
 
       const { getByTestId } = render(<StatisticsScreen />);
