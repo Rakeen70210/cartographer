@@ -76,17 +76,18 @@ export class StatisticsErrorHandler {
     const message = originalError.message.toLowerCase();
     const stack = originalError.stack?.toLowerCase() || '';
 
-    if (this.isNetworkError(message, stack)) {
+    // Check for critical errors first
+    if (this.isCriticalError(message, stack)) {
       return {
-        type: StatisticsErrorType.NETWORK_ERROR,
-        severity: ErrorSeverity.MEDIUM,
+        type: StatisticsErrorType.DATABASE_ERROR,
+        severity: ErrorSeverity.CRITICAL,
         message: originalError.message,
         originalError,
         context,
         timestamp,
-        recoverable: true,
-        userMessage: 'Unable to connect to the internet. Some features may be limited.',
-        suggestedAction: 'Check your internet connection and try again.'
+        recoverable: false,
+        userMessage: 'A critical system error occurred.',
+        suggestedAction: 'Please restart the app. If the problem persists, contact support.'
       };
     }
 
@@ -101,6 +102,20 @@ export class StatisticsErrorHandler {
         recoverable: true,
         userMessage: 'There was a problem accessing your data.',
         suggestedAction: 'Try refreshing the app or restart if the problem persists.'
+      };
+    }
+
+    if (this.isNetworkError(message, stack)) {
+      return {
+        type: StatisticsErrorType.NETWORK_ERROR,
+        severity: ErrorSeverity.MEDIUM,
+        message: originalError.message,
+        originalError,
+        context,
+        timestamp,
+        recoverable: true,
+        userMessage: 'Unable to connect to the internet. Some features may be limited.',
+        suggestedAction: 'Check your internet connection and try again.'
       };
     }
 
@@ -132,19 +147,35 @@ export class StatisticsErrorHandler {
   }
 
   private isNetworkError(message: string, stack: string): boolean {
-    const patterns = [/network/i, /connection/i, /fetch/i, /timeout/i, /offline/i];
+    const patterns = [
+      /network/i, 
+      /fetch/i, 
+      /internet/i, 
+      /offline/i, 
+      /unreachable/i, 
+      /connection refused/i,
+      /connection timeout/i,
+      /network timeout/i
+    ];
     return patterns.some(pattern => pattern.test(message) || pattern.test(stack));
   }
 
   private isDatabaseError(message: string, stack: string): boolean {
-    const patterns = [/database/i, /sqlite/i, /sql/i, /query/i, /storage/i];
+    const patterns = [/database/i, /sqlite/i, /sql/i, /query/i, /storage/i, /transaction/i, /constraint/i];
     return patterns.some(pattern => pattern.test(message) || pattern.test(stack));
   }
 
   private isCalculationError(message: string, stack: string): boolean {
-    const patterns = [/calculation/i, /calculator/i, /statistics/i, /nan/i, /math/i];
-    return patterns.some(pattern => pattern.test(message) || pattern.test(stack)) || 
-           stack.includes('calculator') || stack.includes('statistics');
+    const patterns = [/calculation/i, /calculator/i, /nan/i, /infinity/i, /division by zero/i, /invalid number/i];
+    return patterns.some(pattern => pattern.test(message)) || 
+           stack.includes('calculator') || 
+           stack.includes('distanceCalculator') ||
+           stack.includes('worldExplorationCalculator');
+  }
+
+  private isCriticalError(message: string, stack: string): boolean {
+    const patterns = [/critical/i, /system failure/i, /fatal/i, /corruption/i];
+    return patterns.some(pattern => pattern.test(message) || pattern.test(stack));
   }
 
   private logError(error: StatisticsError): void {

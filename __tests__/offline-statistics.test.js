@@ -1,16 +1,27 @@
-import { act, renderHook, waitFor } from '@testing-library/react-native';
-import { useOfflineStatistics } from '../hooks/useOfflineStatistics';
-import * as database from '../utils/database';
-import { networkUtils } from '../utils/networkUtils';
+// Mock SQLite first
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: jest.fn(() => ({
+    execSync: jest.fn(),
+    prepareSync: jest.fn(() => ({
+      executeSync: jest.fn(),
+      finalizeSync: jest.fn()
+    }))
+  }))
+}));
 
-// Mock dependencies
-jest.mock('../utils/networkUtils');
+// Mock dependencies BEFORE importing anything else
 jest.mock('../utils/database');
+jest.mock('../utils/networkUtils');
 jest.mock('../utils/logger');
 jest.mock('../utils/distanceCalculator');
 jest.mock('../utils/worldExplorationCalculator');
 jest.mock('../utils/geographicHierarchy');
 jest.mock('../utils/remainingRegionsService');
+
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { useOfflineStatistics } from '../hooks/useOfflineStatistics';
+import * as database from '../utils/database';
+import { networkUtils } from '../utils/networkUtils';
 
 // Mock React Native modules
 jest.mock('react-native', () => ({
@@ -54,6 +65,40 @@ describe('useOfflineStatistics', () => {
     database.getRevealedAreas.mockResolvedValue(mockRevealedAreas);
     database.getStatisticsCache.mockResolvedValue(null);
     database.saveStatisticsCache.mockResolvedValue();
+    database.clearAllStatisticsCache.mockResolvedValue();
+    database.getAllLocationGeocodings.mockResolvedValue([]);
+    
+    // Mock calculation functions
+    const { calculateTotalDistance } = require('../utils/distanceCalculator');
+    const { calculateWorldExplorationPercentage } = require('../utils/worldExplorationCalculator');
+    const { convertToLocationWithGeography, buildGeographicHierarchy, calculateExplorationPercentages } = require('../utils/geographicHierarchy');
+    const { getRemainingRegionsData } = require('../utils/remainingRegionsService');
+    const { withOfflineFallback } = require('../utils/networkUtils');
+    
+    calculateTotalDistance.mockResolvedValue({ miles: 0, kilometers: 0 });
+    calculateWorldExplorationPercentage.mockResolvedValue({ 
+      percentage: 0, 
+      totalAreaKm2: 510072000, 
+      exploredAreaKm2: 0 
+    });
+    convertToLocationWithGeography.mockResolvedValue([]);
+    buildGeographicHierarchy.mockResolvedValue([]);
+    calculateExplorationPercentages.mockResolvedValue([]);
+    getRemainingRegionsData.mockResolvedValue({
+      visited: { countries: 0, states: 0, cities: 0 },
+      total: { countries: 195, states: 3142, cities: 10000 },
+      remaining: { countries: 195, states: 3142, cities: 10000 },
+      percentageVisited: { countries: 0, states: 0, cities: 0 }
+    });
+    withOfflineFallback.mockImplementation(async (onlineFunc, offlineFunc) => {
+      try {
+        const result = await onlineFunc();
+        return { result, wasOffline: false };
+      } catch (error) {
+        const result = await offlineFunc();
+        return { result, wasOffline: true };
+      }
+    });
   });
 
   describe('Online Mode', () => {
@@ -221,6 +266,10 @@ describe('useOfflineStatistics', () => {
   describe('Error Handling', () => {
     it('should handle database errors gracefully', async () => {
       database.getLocations.mockRejectedValue(new Error('Database error'));
+      
+      // Make sure calculation functions also fail when database fails
+      const { calculateTotalDistance } = require('../utils/distanceCalculator');
+      calculateTotalDistance.mockRejectedValue(new Error('Database error'));
 
       const { result } = renderHook(() => useOfflineStatistics());
 
@@ -251,6 +300,10 @@ describe('useOfflineStatistics', () => {
 
       // Mock calculation error
       database.getLocations.mockRejectedValue(new Error('Calculation failed'));
+      
+      // Make sure calculation functions also fail
+      const { calculateTotalDistance } = require('../utils/distanceCalculator');
+      calculateTotalDistance.mockRejectedValue(new Error('Calculation failed'));
 
       const { result } = renderHook(() => useOfflineStatistics({
         fallbackToCache: true
@@ -397,11 +450,8 @@ describe('useOfflineStatistics', () => {
       ];
 
       // Mock the convertToLocationWithGeography function
-      jest.doMock('../utils/geographicHierarchy', () => ({
-        convertToLocationWithGeography: jest.fn().mockResolvedValue(locationsWithGeography),
-        buildGeographicHierarchy: jest.fn().mockResolvedValue([]),
-        calculateExplorationPercentages: jest.fn().mockResolvedValue([])
-      }));
+      const { convertToLocationWithGeography } = require('../utils/geographicHierarchy');
+      convertToLocationWithGeography.mockResolvedValue(locationsWithGeography);
 
       const { result } = renderHook(() => useOfflineStatistics());
 

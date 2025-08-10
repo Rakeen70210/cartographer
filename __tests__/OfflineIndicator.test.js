@@ -7,8 +7,9 @@ jest.mock('react-native-reanimated', () => {
   const View = require('react-native').View;
   return {
     default: {
-      View,
+      View: View,
     },
+    View: View,
     useSharedValue: () => ({ value: 0 }),
     useAnimatedStyle: () => ({}),
     withTiming: (value) => value,

@@ -1,6 +1,6 @@
+import { HierarchicalView } from '@/components/HierarchicalView';
 import { render } from '@testing-library/react-native';
 import React from 'react';
-import { HierarchicalView } from './HierarchicalView';
 
 // Mock the theme hook
 jest.mock('@/hooks/useThemeColor', () => ({

@@ -14,11 +14,22 @@ export interface DistanceResult {
 
 /**
  * Calculate the distance between two points using the Haversine formula
+ * 
+ * BEHAVIOR CHANGE (Test Fix): Enhanced input validation to return NaN for invalid coordinates
+ * instead of throwing errors, maintaining consistency with mathematical operations.
+ * This fixes test failures where invalid coordinates caused unexpected exceptions.
+ * 
+ * Input validation improvements:
+ * - Returns NaN for invalid coordinate values (NaN, undefined, out of range)
+ * - Maintains mathematical consistency with other calculation functions
+ * - Prevents exceptions that could break distance calculation chains
+ * - Allows calling code to handle NaN results appropriately
+ * 
  * @param lat1 Latitude of first point in degrees
  * @param lon1 Longitude of first point in degrees
  * @param lat2 Latitude of second point in degrees
  * @param lon2 Longitude of second point in degrees
- * @returns Distance in meters
+ * @returns Distance in meters, or NaN if coordinates are invalid
  */
 export const calculateHaversineDistance = (
   lat1: number,
@@ -26,6 +37,12 @@ export const calculateHaversineDistance = (
   lat2: number,
   lon2: number
 ): number => {
+  // Validate input coordinates
+  if (!validateCoordinates(lat1, lon1) || !validateCoordinates(lat2, lon2)) {
+    // Return NaN for invalid coordinates to maintain consistency with existing behavior
+    return NaN;
+  }
+
   // Earth's radius in meters
   const EARTH_RADIUS_METERS = 6371000;
 
@@ -107,26 +124,50 @@ export const calculateTotalDistance = async (locations: Location[]): Promise<Dis
     const sortedLocations = [...locations].sort((a, b) => a.timestamp - b.timestamp);
 
     let totalDistanceMeters = 0;
+    let validSegments = 0;
+    let invalidSegments = 0;
 
-    // Calculate distance between consecutive points
-    for (let i = 1; i < sortedLocations.length; i++) {
-      const prevLocation = sortedLocations[i - 1];
-      const currentLocation = sortedLocations[i];
+    // Process in chunks to avoid blocking the event loop for large datasets
+    const CHUNK_SIZE = 1000;
+    
+    for (let chunkStart = 1; chunkStart < sortedLocations.length; chunkStart += CHUNK_SIZE) {
+      const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, sortedLocations.length);
+      
+      // Calculate distance between consecutive points in this chunk
+      for (let i = chunkStart; i < chunkEnd; i++) {
+        const prevLocation = sortedLocations[i - 1];
+        const currentLocation = sortedLocations[i];
 
-      const segmentDistance = calculateHaversineDistance(
-        prevLocation.latitude,
-        prevLocation.longitude,
-        currentLocation.latitude,
-        currentLocation.longitude
-      );
+        // Validate that location objects have required properties
+        if (!prevLocation || !currentLocation || 
+            typeof prevLocation.latitude !== 'number' || 
+            typeof prevLocation.longitude !== 'number' ||
+            typeof currentLocation.latitude !== 'number' || 
+            typeof currentLocation.longitude !== 'number') {
+          invalidSegments++;
+          continue;
+        }
 
-      totalDistanceMeters += segmentDistance;
+        const segmentDistance = calculateHaversineDistance(
+          prevLocation.latitude,
+          prevLocation.longitude,
+          currentLocation.latitude,
+          currentLocation.longitude
+        );
 
-      logger.debug('DistanceCalculator: Segment distance calculated', {
-        from: { lat: prevLocation.latitude, lon: prevLocation.longitude },
-        to: { lat: currentLocation.latitude, lon: currentLocation.longitude },
-        distanceMeters: segmentDistance
-      });
+        // Skip NaN distances (from invalid coordinates)
+        if (!isNaN(segmentDistance)) {
+          totalDistanceMeters += segmentDistance;
+          validSegments++;
+        } else {
+          invalidSegments++;
+        }
+      }
+
+      // Yield control to prevent blocking for large datasets
+      if (chunkEnd < sortedLocations.length) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
     }
 
     const result: DistanceResult = {
@@ -137,7 +178,9 @@ export const calculateTotalDistance = async (locations: Location[]): Promise<Dis
     logger.success('DistanceCalculator: Total distance calculation completed', {
       totalDistanceMeters,
       miles: result.miles,
-      kilometers: result.kilometers
+      kilometers: result.kilometers,
+      validSegments,
+      invalidSegments
     });
 
     return result;
@@ -149,6 +192,23 @@ export const calculateTotalDistance = async (locations: Location[]): Promise<Dis
 
 /**
  * Format distance for display with appropriate precision
+ * 
+ * BEHAVIOR CHANGE (Test Fix): Enhanced to handle negative distances, NaN, and Infinity values.
+ * This fixes test failures where special numeric values were not formatted correctly.
+ * 
+ * Special value handling:
+ * - Negative distances maintain proper precision formatting
+ * - NaN values display as "NaN miles" or "NaN km"
+ * - Infinity values display as "Infinity miles" or "Infinity km"
+ * - -Infinity values display as "-Infinity miles" or "-Infinity km"
+ * - Zero values display as "0 miles" or "0 km"
+ * 
+ * Precision logic:
+ * - Large distances (≥1000): no decimal places
+ * - Medium distances (100-999): 1 decimal place
+ * - Small distances (<100): 2 decimal places
+ * - Precision applied consistently for both positive and negative values
+ * 
  * @param distance Distance value
  * @param unit Unit of measurement ('miles' or 'kilometers')
  * @returns Formatted distance string
@@ -158,16 +218,24 @@ export const formatDistance = (distance: number, unit: 'miles' | 'kilometers'): 
     return `0 ${unit === 'miles' ? 'miles' : 'km'}`;
   }
 
-  // Use appropriate precision based on distance magnitude
-  let precision = 1;
-  if (distance >= 1000) {
+  // Handle special cases
+  if (isNaN(distance)) return `NaN ${unit === 'miles' ? 'miles' : 'km'}`;
+  if (distance === Infinity) return `Infinity ${unit === 'miles' ? 'miles' : 'km'}`;
+  if (distance === -Infinity) return `-Infinity ${unit === 'miles' ? 'miles' : 'km'}`;
+
+  // Use appropriate precision based on distance magnitude (use absolute value for precision logic)
+  const absDistance = Math.abs(distance);
+  let precision = 2; // Default to 2 decimal places for small distances
+  if (absDistance >= 1000) {
     precision = 0; // No decimal places for large distances
-  } else if (distance >= 100) {
+  } else if (absDistance >= 100) {
     precision = 1; // One decimal place for medium distances
-  } else {
-    precision = 2; // Two decimal places for small distances
   }
 
+  // Format with proper precision
+  // For small distances (< 100), always show the specified precision with trailing zeros
+  // For medium distances (100-999), show 1 decimal place with trailing zeros
+  // For large distances (>= 1000), show no decimal places
   const formatted = distance.toLocaleString('en-US', {
     minimumFractionDigits: precision,
     maximumFractionDigits: precision
@@ -192,5 +260,20 @@ export const validateCoordinates = (latitude: number, longitude: number): boolea
     latitude <= 90 &&
     longitude >= -180 &&
     longitude <= 180
+  );
+};
+
+/**
+ * Validate a location object
+ * @param location Location object to validate
+ * @returns True if location object is valid
+ */
+export const validateLocation = (location: any): location is Location => {
+  return (
+    location &&
+    typeof location === 'object' &&
+    typeof location.id === 'number' &&
+    typeof location.timestamp === 'number' &&
+    validateCoordinates(location.latitude, location.longitude)
   );
 };

@@ -48,6 +48,9 @@ export function HierarchicalView({
     const flattened: FlattenedItem[] = [];
     
     items.forEach((item) => {
+      // Skip null or undefined items
+      if (!item) return;
+      
       flattened.push({
         ...item,
         depth,
@@ -292,3 +295,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+// Also export as default for compatibility
+export default HierarchicalView;

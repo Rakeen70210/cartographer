@@ -27,10 +27,10 @@ describe('Location Tracking Integration Tests - Simplified', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // Setup Location mocks
-    Location.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
-    Location.requestBackgroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
-    Location.getCurrentPositionAsync.mockResolvedValue({
+    // Reset Location mocks to default values
+    Location.requestForegroundPermissionsAsync = jest.fn().mockResolvedValue({ status: 'granted' });
+    Location.requestBackgroundPermissionsAsync = jest.fn().mockResolvedValue({ status: 'granted' });
+    Location.getCurrentPositionAsync = jest.fn().mockResolvedValue({
       coords: {
         latitude: 37.7749,
         longitude: -122.4194,
@@ -41,13 +41,23 @@ describe('Location Tracking Integration Tests - Simplified', () => {
       },
       timestamp: Date.now(),
     });
-    Location.watchPositionAsync.mockResolvedValue({ remove: jest.fn() });
-    Location.startLocationUpdatesAsync.mockResolvedValue(undefined);
-    Location.stopLocationUpdatesAsync.mockResolvedValue(undefined);
+    Location.watchPositionAsync = jest.fn().mockResolvedValue({ remove: jest.fn() });
+    Location.startLocationUpdatesAsync = jest.fn().mockResolvedValue(undefined);
+    Location.stopLocationUpdatesAsync = jest.fn().mockResolvedValue(undefined);
+    
+    // Ensure Accuracy constants are available
+    Location.Accuracy = {
+      BestForNavigation: 6,
+      Highest: 6,
+      High: 4,
+      Balanced: 3,
+      Low: 2,
+      Lowest: 1,
+    };
     
     // Setup TaskManager mocks
-    TaskManager.defineTask.mockImplementation(() => {});
-    TaskManager.isTaskRegisteredAsync.mockResolvedValue(false);
+    TaskManager.defineTask = jest.fn().mockImplementation(() => {});
+    TaskManager.isTaskRegisteredAsync = jest.fn().mockResolvedValue(false);
   });
 
   describe('Requirement 4.1: Location tracking integration with fog updates', () => {

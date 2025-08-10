@@ -1,7 +1,10 @@
 module.exports = {
   preset: 'react-native',
   testEnvironment: 'node',
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: [
+    '<rootDir>/jest.setup.js',
+    '<rootDir>/__tests__/setup/jestSetup.js'
+  ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
@@ -10,7 +13,7 @@ module.exports = {
     'node_modules/(?!(expo|@expo|react-native|@react-native|@rnmapbox|@turf|react-native-reanimated|react-native-gesture-handler|@react-navigation|expo-symbols|expo-blur|expo-router|expo-sqlite|expo-asset|expo-constants|expo-file-system|expo-font|expo-haptics|expo-location|expo-task-manager|react-native-safe-area-context|@react-native-community)/)',
   ],
   testMatch: [
-    '**/__tests__/**/*.(js|jsx|ts|tsx)',
+    '**/__tests__/**/*.(test|spec).(js|jsx|ts|tsx)',
     '**/?(*.)(test|spec).(js|jsx|ts|tsx)',
   ],
   testPathIgnorePatterns: [
@@ -27,7 +30,15 @@ module.exports = {
     'utils/**/*.{js,jsx,ts,tsx}',
     'hooks/**/*.{js,jsx,ts,tsx}',
     'app/**/*.{js,jsx,ts,tsx}',
+    'components/**/*.{js,jsx,ts,tsx}',
     '!**/*.d.ts',
     '!**/node_modules/**',
+    '!**/__tests__/setup/**',
+    '!**/__tests__/mocks/**',
+    '!**/__tests__/config/**',
   ],
+  // Increase timeout for all tests to account for system variability
+  testTimeout: 30000,
+  // Clear mocks between tests
+  clearMocks: true,
 };

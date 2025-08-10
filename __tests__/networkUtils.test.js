@@ -13,6 +13,8 @@ describe('NetworkUtils', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     global.fetch.mockClear();
+    // Clear cached network state to ensure fresh state for each test
+    networkUtils.clearCache();
   });
 
   describe('Connectivity Testing', () => {
@@ -56,8 +58,18 @@ describe('NetworkUtils', () => {
     });
 
     it('should timeout connectivity test', async () => {
-      global.fetch.mockImplementation(() => 
-        new Promise(resolve => setTimeout(() => resolve({ ok: true }), 2000))
+      global.fetch.mockImplementation((url, options) => 
+        new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => resolve({ ok: true }), 2000);
+          
+          // Handle abort signal
+          if (options?.signal) {
+            options.signal.addEventListener('abort', () => {
+              clearTimeout(timeoutId);
+              reject(new Error('The operation was aborted'));
+            });
+          }
+        })
       );
 
       const result = await networkUtils.testConnectivity({
@@ -95,7 +107,7 @@ describe('NetworkUtils', () => {
       const state = await networkUtils.getCurrentState();
       
       expect(state.isConnected).toBe(false);
-      expect(state.connectionType).toBe('unknown');
+      expect(state.type).toBe('unknown');
     });
 
     it('should determine online status correctly', async () => {

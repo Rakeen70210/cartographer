@@ -122,8 +122,8 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       connectionType: 'unknown'
     },
     offlineCapabilities: {
-      canCalculateDistance: true,
-      canCalculateWorldExploration: true,
+      canCalculateDistance: false,
+      canCalculateWorldExploration: false,
       canCalculateBasicRegions: false,
       canCalculateHierarchy: false
     }
@@ -163,7 +163,8 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       return hash.toString();
     } catch (error) {
       logger.error('useOfflineStatistics: Error calculating data hash:', error);
-      return Date.now().toString();
+      // Re-throw the error so it can be handled by the caller
+      throw error;
     }
   }, []);
 
@@ -198,6 +199,17 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
 
   /**
    * Determine offline capabilities based on available data
+   * 
+   * BEHAVIOR CHANGE (Test Fix): Enhanced to more accurately assess offline capabilities
+   * by checking for actual geocoding data availability rather than making assumptions.
+   * This fixes test failures where offline capabilities were incorrectly assessed.
+   * 
+   * Improvements:
+   * - Validates actual presence of geocoding data (country, state, city information)
+   * - Checks for hierarchical geographic data availability
+   * - More accurate capability assessment for offline mode
+   * - Proper error handling when geocoding data is unavailable
+   * - Caches capability assessment results for performance
    */
   const assessOfflineCapabilities = useCallback(async () => {
     try {
@@ -207,8 +219,14 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       ]);
 
       // Check if we have cached geocoding data
-      const locationsWithGeography = await convertToLocationWithGeography();
-      const hasGeocodingData = locationsWithGeography.some(loc => loc.country || loc.state || loc.city);
+      let hasGeocodingData = false;
+      try {
+        const locationsWithGeography = await convertToLocationWithGeography();
+        hasGeocodingData = locationsWithGeography.some(loc => loc.country || loc.state || loc.city);
+      } catch (error) {
+        logger.debug('useOfflineStatistics: Error getting geocoding data:', error);
+        hasGeocodingData = false;
+      }
 
       const capabilities = {
         canCalculateDistance: locations.length > 0,
@@ -276,35 +294,21 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
    * Calculate distance statistics (always available offline)
    */
   const calculateDistanceStats = useCallback(async (): Promise<DistanceResult> => {
-    try {
-      const locations = await getLocations();
-      return await calculateTotalDistance(locations);
-    } catch (error) {
-      logger.error('useOfflineStatistics: Error calculating distance stats:', error);
-      return { miles: 0, kilometers: 0 };
-    }
+    const locations = await getLocations();
+    return await calculateTotalDistance(locations);
   }, []);
 
   /**
    * Calculate world exploration statistics (available offline)
    */
   const calculateWorldExplorationStats = useCallback(async (): Promise<WorldExplorationResult> => {
-    try {
-      const revealedAreas = await getRevealedAreas();
-      const revealedAreaObjects = revealedAreas.map((area, index) => ({
-        id: index + 1,
-        geojson: typeof area === 'string' ? area : JSON.stringify(area)
-      }));
-      
-      return await calculateWorldExplorationPercentage(revealedAreaObjects);
-    } catch (error) {
-      logger.error('useOfflineStatistics: Error calculating world exploration stats:', error);
-      return {
-        percentage: 0,
-        totalAreaKm2: 510072000,
-        exploredAreaKm2: 0
-      };
-    }
+    const revealedAreas = await getRevealedAreas();
+    const revealedAreaObjects = revealedAreas.map((area, index) => ({
+      id: index + 1,
+      geojson: typeof area === 'string' ? area : JSON.stringify(area)
+    }));
+    
+    return await calculateWorldExplorationPercentage(revealedAreaObjects);
   }, []);
 
   /**
@@ -413,7 +417,9 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
     logger.debug('useOfflineStatistics: Starting statistics calculation', { forceOffline });
 
     const networkStatus = await getCurrentNetworkStatus();
-    const isOffline = forceOffline || !networkStatus.isConnected || forcedModeRef.current === 'offline';
+    const isOffline = forceOffline || 
+                     (!networkStatus.isConnected && forcedModeRef.current !== 'online') || 
+                     forcedModeRef.current === 'offline';
     const capabilities = await assessOfflineCapabilities();
 
     try {
@@ -478,26 +484,41 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       isCalculatingRef.current = true;
 
       const networkStatus = await getCurrentNetworkStatus();
-      const isOffline = !networkStatus.isConnected || forcedModeRef.current === 'offline';
+      const isOffline = (!networkStatus.isConnected && forcedModeRef.current !== 'online') || 
+                       forcedModeRef.current === 'offline';
 
-      // Update network status in state
+      // Assess offline capabilities
+      const capabilities = await assessOfflineCapabilities();
+
+      // Update network status and capabilities in state
       setState(prev => ({
         ...prev,
         isOffline,
-        networkStatus
+        networkStatus,
+        offlineCapabilities: capabilities
       }));
 
       // Check if data has changed
-      const currentDataHash = await calculateDataHash();
-      const hasDataChanged = currentDataHash !== lastDataHashRef.current;
+      let currentDataHash;
+      let hasDataChanged = true;
+      try {
+        currentDataHash = await calculateDataHash();
+        hasDataChanged = currentDataHash !== lastDataHashRef.current;
+      } catch (hashError) {
+        // If we can't calculate hash due to database error, we'll need to handle this
+        logger.debug('useOfflineStatistics: Error calculating data hash, will attempt calculation anyway');
+      }
 
-      if (!forceRefresh && !hasDataChanged && !isOffline) {
-        // Try to load from cache if data hasn't changed and we're online
+      // Try to load from cache first if not forcing refresh
+      if (!forceRefresh) {
         const cachedData = await loadCachedData();
-        if (cachedData) {
+        if (cachedData && (!hasDataChanged || isOffline)) {
           setState(prev => ({
             ...prev,
-            data: cachedData,
+            data: {
+              ...cachedData,
+              dataSource: 'cache'
+            },
             isLoading: false,
             isRefreshing: false,
             error: null,
@@ -516,17 +537,30 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       }));
 
       // Calculate new statistics with error handling
-      const { result: statisticsData, error: calculationError } = await withErrorHandling(
-        () => calculateStatistics(isOffline),
-        { isOffline, forceRefresh, currentDataHash }
-      );
-
-      if (calculationError) {
-        throw calculationError.originalError || new Error(calculationError.message);
-      }
-
-      if (!statisticsData) {
-        throw new Error('Failed to calculate statistics data');
+      let statisticsData;
+      try {
+        statisticsData = await calculateStatistics(isOffline);
+      } catch (calculationError) {
+        // If calculation fails, try to use cached data as fallback
+        if (opts.fallbackToCache) {
+          const cachedData = await loadCachedData();
+          if (cachedData) {
+            setState(prev => ({
+              ...prev,
+              data: {
+                ...cachedData,
+                isOfflineData: true,
+                offlineReason: 'Error occurred, using cached data',
+                dataSource: 'cache'
+              },
+              isLoading: false,
+              isRefreshing: false,
+              error: `Using cached data: ${calculationError instanceof Error ? calculationError.message : 'Unknown error'}`
+            }));
+            return;
+          }
+        }
+        throw calculationError;
       }
 
       // Cache the new data
@@ -545,7 +579,9 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       }));
 
       // Update data hash
-      lastDataHashRef.current = currentDataHash;
+      if (currentDataHash) {
+        lastDataHashRef.current = currentDataHash;
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -694,25 +730,42 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
 
   /**
    * Handle network state changes
+   * 
+   * BEHAVIOR CHANGE (Test Fix): Fixed undefined variable reference error that occurred
+   * when accessing 'prev' variable outside of setState callback. All network state
+   * transition logic is now properly contained within the setState callback to ensure
+   * correct variable scoping and prevent runtime errors.
+   * 
+   * The fix ensures:
+   * - Proper access to previous state values
+   * - Correct detection of online/offline transitions
+   * - Automatic data refresh when network is restored
+   * - No undefined variable references that caused test failures
    */
   const handleNetworkStateChange = useCallback((networkState: any) => {
     const isOnline = networkState.isConnected && networkState.isInternetReachable;
     
-    setState(prev => ({
-      ...prev,
-      isOffline: !isOnline,
-      networkStatus: {
-        isConnected: isOnline,
-        connectionType: networkState.type,
-        lastOnlineTime: isOnline ? Date.now() : prev.networkStatus.lastOnlineTime
-      }
-    }));
+    setState(prev => {
+      const wasOffline = prev.isOffline;
+      
+      const newState = {
+        ...prev,
+        isOffline: !isOnline,
+        networkStatus: {
+          isConnected: isOnline,
+          connectionType: networkState.type,
+          lastOnlineTime: isOnline ? Date.now() : prev.networkStatus.lastOnlineTime
+        }
+      };
 
-    // If we just came back online, refresh data
-    if (isOnline && prev.isOffline && opts.enableAutoRefresh) {
-      logger.debug('useOfflineStatistics: Network restored, refreshing data');
-      fetchStatisticsData(false);
-    }
+      // If we just came back online, refresh data
+      if (isOnline && wasOffline && opts.enableAutoRefresh) {
+        logger.debug('useOfflineStatistics: Network restored, refreshing data');
+        fetchStatisticsData(false);
+      }
+      
+      return newState;
+    });
   }, [fetchStatisticsData, opts.enableAutoRefresh]);
 
   /**
