@@ -496,10 +496,12 @@ export const createFogWithFallback = (
   options: FogCalculationOptions
 ): FogCalculationResult => {
   const overallStartTime = performance.now();
+  let viewportCalculationAttempted = false;
   
   try {
     // Primary: Viewport-based fog with revealed areas
     if (options.useViewportOptimization && options.viewportBounds) {
+      viewportCalculationAttempted = true;
       const result = calculateViewportFog(revealedAreas, options);
       
       // If successful and no critical errors, return result
@@ -512,6 +514,7 @@ export const createFogWithFallback = (
     
     // Secondary: Simplified viewport fog
     if (options.fallbackStrategy === 'viewport' && options.viewportBounds) {
+      viewportCalculationAttempted = true;
       logger.warn('Primary fog calculation failed, trying simplified viewport approach');
       
       try {
@@ -525,7 +528,9 @@ export const createFogWithFallback = (
     
     // Tertiary: World fog as final fallback
     if (options.fallbackStrategy === 'world' || options.fallbackStrategy === 'viewport') {
-      logger.error('All fog calculation methods failed, using world fog');
+      if (viewportCalculationAttempted) {
+        logger.error('All fog calculation methods failed, using world fog');
+      }
       
       const worldResult = calculateSimplifiedFog(); // No viewport bounds = world fog
       worldResult.warnings.push('Used world fog as final fallback');
