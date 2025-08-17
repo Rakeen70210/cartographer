@@ -1,3 +1,11 @@
+// Unmock the world exploration calculator for this test
+jest.unmock('../utils/worldExplorationCalculator');
+jest.unmock('../utils/logger');
+
+// Also unmock Turf.js for accurate area calculations
+jest.unmock('@turf/turf');
+jest.unmock('@turf/area');
+
 import {
     calculateRevealedArea,
     calculateSingleFeatureArea,

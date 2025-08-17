@@ -1,5 +1,5 @@
+import { logger } from '@/utils/logger';
 import NetInfo from '@react-native-community/netinfo';
-import { logger } from './logger';
 
 export interface NetworkState {
   isConnected: boolean;

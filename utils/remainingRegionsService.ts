@@ -1,6 +1,6 @@
+import { logger } from '@/utils/logger';
 import { getTotalRegionCounts } from './geographicApiService';
 import { convertToLocationWithGeography } from './geographicHierarchy';
-import { logger } from './logger';
 
 /**
  * Service for calculating remaining unexplored regions

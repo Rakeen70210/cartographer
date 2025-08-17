@@ -1,10 +1,10 @@
+import { logger } from '@/utils/logger';
 import {
-  getRegionBoundary,
-  getStatisticsCache,
-  saveRegionBoundary,
-  saveStatisticsCache
+    getRegionBoundary,
+    getStatisticsCache,
+    saveRegionBoundary,
+    saveStatisticsCache
 } from './database';
-import { logger } from './logger';
 
 /**
  * Geographic API Service for fetching real boundary data from multiple sources

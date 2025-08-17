@@ -1,5 +1,5 @@
+import { logger } from '@/utils/logger';
 import { getAllLocationGeocodings, LocationGeocoding } from './database';
-import { logger } from './logger';
 
 /**
  * Geographic hierarchy data structures for statistics dashboard

@@ -1,4 +1,4 @@
-import { logger } from './logger';
+import { logger } from '@/utils/logger';
 import { StatisticsError, StatisticsErrorType, statisticsErrorHandler } from './statisticsErrorHandler';
 
 /**

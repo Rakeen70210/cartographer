@@ -1,6 +1,39 @@
 // Jest setup file
 import 'react-native-gesture-handler/jestSetup';
 
+// Define __DEV__ for test environment
+global.__DEV__ = true;
+
+// Mock logger FIRST to ensure it's available everywhere
+const mockLogger = {
+  debug: jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  success: jest.fn()
+};
+
+// Use doMock to ensure runtime mocking
+jest.doMock('@/utils/logger', () => ({
+  logger: mockLogger
+}));
+
+jest.doMock('./utils/logger', () => ({
+  logger: mockLogger
+}));
+
+// Also use regular mock for hoisting
+jest.mock('@/utils/logger', () => ({
+  logger: mockLogger
+}));
+
+jest.mock('./utils/logger', () => ({
+  logger: mockLogger
+}));
+
+// Export mockLogger for use in tests
+global.mockLogger = mockLogger;
+
 // Mock TurboModuleRegistry to prevent DevMenu errors
 jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => ({
   get: jest.fn(() => null),
@@ -244,36 +277,74 @@ jest.mock('./constants/Colors', () => ({
 
 // Mock react-native-reanimated
 jest.mock('react-native-reanimated', () => {
-  const mockComponent = (name) => {
-    const MockedComponent = (props) => {
-      const React = require('react');
-      return React.createElement('View', props, props.children);
-    };
+  const React = require('react');
+  const { View, Text, ScrollView } = require('react-native');
+  
+  const mockComponent = (Component, name) => {
+    const MockedComponent = React.forwardRef((props, ref) => {
+      return React.createElement(Component, { ...props, ref }, props.children);
+    });
     MockedComponent.displayName = name;
     return MockedComponent;
   };
 
   return {
-    default: mockComponent('Animated.View'),
-    View: mockComponent('Animated.View'),
-    Text: mockComponent('Animated.Text'),
-    ScrollView: mockComponent('Animated.ScrollView'),
-    useSharedValue: jest.fn(() => ({ value: 0 })),
+    __esModule: true,
+    default: {
+      View: mockComponent(View, 'Animated.View'),
+      Text: mockComponent(Text, 'Animated.Text'),
+      ScrollView: mockComponent(ScrollView, 'Animated.ScrollView'),
+    },
+    View: mockComponent(View, 'Animated.View'),
+    Text: mockComponent(Text, 'Animated.Text'),
+    ScrollView: mockComponent(ScrollView, 'Animated.ScrollView'),
+    useSharedValue: jest.fn(() => ({ 
+      value: 0,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      modify: jest.fn()
+    })),
     useAnimatedStyle: jest.fn(() => ({})),
     useAnimatedRef: jest.fn(() => ({ current: null })),
     useScrollViewOffset: jest.fn(() => ({ value: 0 })),
-    withTiming: jest.fn((value) => value),
-    withSpring: jest.fn((value) => value),
-    withRepeat: jest.fn((value) => value),
-    withSequence: jest.fn((value) => value),
-    runOnJS: jest.fn((fn) => fn),
-    interpolate: jest.fn(),
-    Extrapolate: { CLAMP: 'clamp' },
+    withTiming: jest.fn((value, config, callback) => {
+      if (callback) setTimeout(callback, 0);
+      return value;
+    }),
+    withSpring: jest.fn((value, config, callback) => {
+      if (callback) setTimeout(callback, 0);
+      return value;
+    }),
+    withRepeat: jest.fn((value, count, reverse, callback) => {
+      if (callback) setTimeout(callback, 0);
+      return value;
+    }),
+    withSequence: jest.fn((...values) => {
+      return values[values.length - 1];
+    }),
+    runOnJS: jest.fn((fn) => (...args) => fn(...args)),
+    interpolate: jest.fn((value, inputRange, outputRange) => outputRange[0]),
+    Extrapolate: { 
+      CLAMP: 'clamp',
+      EXTEND: 'extend',
+      IDENTITY: 'identity'
+    },
     Easing: {
       linear: jest.fn(),
       ease: jest.fn(),
       quad: jest.fn(),
       cubic: jest.fn(),
+      poly: jest.fn(),
+      sin: jest.fn(),
+      circle: jest.fn(),
+      exp: jest.fn(),
+      elastic: jest.fn(),
+      back: jest.fn(),
+      bounce: jest.fn(),
+      bezier: jest.fn(),
+      in: jest.fn(),
+      out: jest.fn(),
+      inOut: jest.fn()
     },
   };
 });
@@ -311,6 +382,8 @@ jest.mock('./hooks/useColorScheme', () => ({
 jest.mock('./hooks/useThemeColor', () => ({
   useThemeColor: jest.fn(() => '#000000'),
 }));
+
+
 
 // Mock Expo modules
 jest.mock('expo-location', () => ({

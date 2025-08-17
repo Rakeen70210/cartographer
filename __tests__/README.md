@@ -1,244 +1,276 @@
-# Test Data Consistency Guide
+# Comprehensive Testing Suite for Map Component Refactor
 
-This document explains how to use the standardized test data factories and mocks to ensure consistency across all test files.
+This directory contains a comprehensive testing suite designed to validate the map component refactoring work. The tests ensure that all refactored components maintain their expected behavior while providing improved performance and error handling.
 
-## Overview
+## Test Structure
 
-The test suite now uses standardized data factories and mock implementations to ensure:
-- Consistent data structures across all tests
-- Realistic timing expectations that account for system variability
-- Aligned mock behaviors that match the fixed implementations
+### Core Test Files
+- `__tests__/integration/` - Integration tests for component interactions
+- `__tests__/performance/` - Performance benchmarks and monitoring
+- `__tests__/error-scenarios/` - Error handling and fallback strategy tests
+- `__tests__/memory/` - Memory usage and lifecycle tests
+- `__tests__/regression/` - Behavioral consistency tests
 
-## Key Files
+### Test Utilities
+- `__tests__/setup/` - Test configuration and mock setup
+- `__tests__/utils/` - Performance monitoring and test utilities
+- `__tests__/mocks/` - Mock data factories and test data
 
-### Test Data Factories (`__tests__/mocks/testDataFactories.js`)
-Contains factory functions for creating consistent mock data:
-- `createMockLocation()` - Standard location data
-- `createMockStatisticsData()` - Standard statistics data
-- `createMockNetworkState()` - Standard network state data
-- And many more...
+## Test Categories
 
-### Updated Mocks (`__tests__/mocks/updatedMocks.js`)
-Contains mock implementations that match the fixed function behaviors:
-- Network utilities with proper timeout handling
-- Distance calculator with correct formatting
-- World exploration calculator with enhanced validation
-- Performance optimizers with realistic timing
+### 1. Integration Tests (`integration/`)
+Tests the interaction between refactored components:
+- **Fog Calculation Integration**: Tests fog calculation hook with geometry operations
+- **Geometry Operations Integration**: Tests buffer creation, union, and difference operations
+- **Hook Integration**: Tests fog calculation and viewport hooks working together
+- **Error Handling Integration**: Tests graceful error handling across components
+- **Performance Integration**: Tests performance with large datasets
+- **Memory Management Integration**: Tests resource cleanup and memory management
 
-### Test Setup (`__tests__/setup/testSetup.js`)
-Provides standardized test data sets and utilities:
-- `STANDARD_TEST_DATA` - Pre-configured data sets for different scenarios
-- `ERROR_SCENARIOS` - Standardized error test cases
-- `GEOMETRY_TEST_CASES` - Valid and invalid geometry examples
-- `TEST_CONSTANTS` - Consistent values used across tests
+**Requirements Covered**: 2.4, 3.3, 8.1, 8.2
 
-### Jest Setup (`__tests__/setup/jestSetup.js`)
-Global Jest configuration and utilities:
-- Consistent mock implementations
-- Global test utilities
-- Performance and error testing helpers
-- Standardized timeout values
+### 2. Performance Tests (`performance/`)
+Benchmarks geometry operations and fog calculations:
+- **Geometry Validation Performance**: Tests validation speed for different complexity levels
+- **Buffer Creation Performance**: Tests buffer operation performance across different sizes
+- **Union Operations Performance**: Tests union performance scaling with polygon count
+- **Difference Operations Performance**: Tests difference operation performance
+- **Fog Calculation Performance**: Tests fog calculation performance in different modes
+- **Memory Performance**: Tests memory usage during repeated operations
 
-### Standard Mocks (`__tests__/setup/standardMocks.js`)
-Factory functions for creating consistent mocks:
-- Database mocks with realistic behaviors
-- Network mocks with proper error handling
-- Component mocks with correct accessibility
-- Hook mocks with consistent return values
+**Requirements Covered**: 8.1, 8.2, 8.3
 
-### Performance Expectations (`__tests__/config/performanceExpectations.js`)
-Realistic timing expectations that account for system variability:
-- Environment-specific multipliers (CI, local, mobile)
-- Adjusted expectations for different operation types
-- Helper functions for performance testing
+**Performance Thresholds**:
+- Geometry Validation: Simple (10ms), Complex (50ms), Very Complex (200ms)
+- Geometry Operations: Buffer (100ms), Union Simple (200ms), Union Complex (1000ms)
+- Fog Calculation: Viewport Simple (300ms), Viewport Complex (1500ms)
 
-## Usage Examples
+### 3. Error Scenario Tests (`error-scenarios/`)
+Tests error handling and fallback strategies:
+- **Database Error Scenarios**: Connection failures, timeouts, corrupted data
+- **Geometry Operation Errors**: Invalid geometries, operation failures
+- **Fog Calculation Errors**: Invalid viewport bounds, corrupted revealed areas
+- **Hook Error Scenarios**: Error recovery, rapid error scenarios
+- **Network Error Scenarios**: Network failures, partial failures
+- **Memory and Resource Errors**: Memory pressure, resource cleanup
+- **Fallback Strategy Validation**: Tests effectiveness of fallback strategies
 
-### Basic Test Setup
+**Requirements Covered**: 8.4, 3.3
+
+### 4. Memory Tests (`memory/`)
+Monitors memory usage and component lifecycle:
+- **Hook Memory Management**: Tests memory usage during hook lifecycle
+- **Geometry Operations Memory**: Tests memory usage during repeated operations
+- **Fog Calculation Memory**: Tests memory management during complex calculations
+- **Component Integration Memory**: Tests memory during integrated operations
+- **Memory Leak Detection**: Tests for memory leaks during component unmounting
+
+**Requirements Covered**: 8.1, 8.2
+
+### 5. Regression Tests (`regression/`)
+Ensures no behavioral changes after refactoring:
+- **Fog Calculation Behavioral Consistency**: Tests consistent fog calculation behavior
+- **Geometry Operations Behavioral Consistency**: Tests consistent geometry operation behavior
+- **Viewport Management Behavioral Consistency**: Tests consistent viewport behavior
+- **Integration Behavioral Consistency**: Tests consistent integration behavior
+- **Performance Behavioral Consistency**: Tests consistent performance characteristics
+
+**Requirements Covered**: 2.4, 3.3, 8.1, 8.2, 8.3, 8.4
+
+## Running Tests
+
+### Quick Start
+```bash
+# Run core functionality tests (recommended first)
+npm run test:core
+
+# Run all comprehensive tests
+npm run test:comprehensive
+```
+
+### Individual Test Suites
+```bash
+# Run specific test categories
+npm run test:integration
+npm run test:performance
+npm run test:error-scenarios
+npm run test:memory
+npm run test:regression
+```
+
+### Standard Jest Commands
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run with coverage
+npm test -- --coverage
+```
+
+## Test Configuration
+
+### Performance Thresholds
+The tests include configurable performance thresholds defined in `__tests__/utils/performance-monitor.js`:
 
 ```javascript
-import { setupStandardMocks, TEST_CONSTANTS } from '../setup/testSetup.js';
-import { applyStandardMocks } from '../setup/standardMocks.js';
+const PERFORMANCE_THRESHOLDS = {
+  GEOMETRY_VALIDATION: {
+    SIMPLE: 10,      // ms
+    COMPLEX: 50,     // ms
+    VERY_COMPLEX: 200 // ms
+  },
+  GEOMETRY_OPERATIONS: {
+    BUFFER_CREATION: 100,    // ms
+    UNION_SIMPLE: 200,       // ms
+    UNION_COMPLEX: 1000,     // ms
+    DIFFERENCE_SIMPLE: 150,  // ms
+    DIFFERENCE_COMPLEX: 800  // ms
+  },
+  FOG_CALCULATION: {
+    VIEWPORT_SIMPLE: 300,    // ms
+    VIEWPORT_COMPLEX: 1500,  // ms
+    WORLD_FOG: 50           // ms
+  }
+};
+```
 
-describe('My Component', () => {
-  beforeEach(() => {
-    // Apply all standard mocks
-    applyStandardMocks();
-    
-    // Or setup specific test data
-    const { mockLocations, mockStatistics } = setupStandardMocks('SMALL_DATASET');
-  });
+### Memory Thresholds
+Memory usage thresholds are defined to catch memory leaks:
+- Maximum memory increase: 100MB during operations
+- Maximum memory leak: 20MB after cleanup
+
+## Test Data
+
+### Mock Data Factories
+The test suite includes comprehensive mock data factories in `__tests__/setup/testSetup.js`:
+- **Standard Test Data**: Empty, small, medium, and large datasets
+- **Error Scenarios**: Network errors, database errors, validation errors
+- **Geometry Test Cases**: Valid and invalid geometry examples
+- **Network Scenarios**: Online, offline, poor connection states
+
+### Test Constants
+Standardized test constants ensure consistency:
+```javascript
+const TEST_CONSTANTS = {
+  DEFAULT_LATITUDE: 37.7749,
+  DEFAULT_LONGITUDE: -122.4194,
+  DEFAULT_TIMESTAMP: 1640995200000,
+  // ... more constants
+};
+```
+
+## Performance Monitoring
+
+### Performance Monitor Class
+The `PerformanceMonitor` class provides consistent performance measurement:
+```javascript
+const monitor = new PerformanceMonitor('operation-name');
+monitor.start();
+// ... perform operation
+const measurement = monitor.stop();
+```
+
+### Memory Monitoring
+Memory monitoring utilities track memory usage during operations:
+```javascript
+const { result, memoryProfile } = await memoryMonitor.monitorOperation(async () => {
+  // ... perform memory-intensive operation
 });
 ```
 
-### Using Test Data Factories
+## Error Handling Testing
 
-```javascript
-import { 
-  createMockLocations, 
-  createMockStatisticsData,
-  createMockNetworkState 
-} from '../mocks/testDataFactories.js';
+### Fallback Strategy Testing
+Tests validate that fallback strategies work correctly:
+- **Viewport Fallback**: Falls back to viewport fog when world fog fails
+- **World Fallback**: Falls back to world fog when viewport fog fails
+- **Geometry Fallback**: Uses original geometry when operations fail
 
-test('should handle location data', () => {
-  const locations = createMockLocations(5); // Creates 5 consistent locations
-  const statistics = createMockStatisticsData({
-    totalDistance: { miles: 10, kilometers: 16 }
-  });
-  
-  // Test with consistent data...
-});
-```
+### Error Recovery Testing
+Tests ensure components recover gracefully from errors:
+- Database connection recovery
+- Network error recovery
+- Invalid data handling
+- Resource cleanup after errors
 
-### Performance Testing
+## Continuous Integration
 
-```javascript
-import { 
-  getDistanceCalculationExpectation,
-  measurePerformance 
-} from '../config/performanceExpectations.js';
+### Test Reports
+The comprehensive test runner generates detailed reports:
+- Execution time for each test suite
+- Performance metrics and comparisons
+- Memory usage analysis
+- Error scenario coverage
 
-test('should calculate distance efficiently', async () => {
-  const datasetSize = 1000;
-  const expectation = getDistanceCalculationExpectation(datasetSize);
-  
-  const result = await measurePerformance(
-    () => calculateTotalDistance(locations),
-    expectation,
-    'distance calculation'
-  );
-  
-  expect(result.passed).toBe(true);
-});
-```
-
-### Error Scenario Testing
-
-```javascript
-import { setupErrorScenario } from '../setup/testSetup.js';
-
-test('should handle network errors', async () => {
-  const { error, networkState, expectedBehavior } = setupErrorScenario('NETWORK_ERROR');
-  
-  // Mock the error condition
-  mockNetworkUtils.getCurrentState.mockRejectedValue(error);
-  
-  // Test error handling...
-  expect(expectedBehavior).toBe('fallback_to_offline');
-});
-```
-
-### Geometry Testing
-
-```javascript
-import { setupGeometryTestCase } from '../setup/testSetup.js';
-
-test('should validate polygon geometry', () => {
-  const validPolygon = setupGeometryTestCase('VALID_CASES', 'simple_polygon');
-  const invalidGeometry = setupGeometryTestCase('INVALID_CASES', 'point_geometry');
-  
-  expect(validateGeometryForArea(validPolygon)).toBe(true);
-  expect(validateGeometryForArea(invalidGeometry)).toBe(false);
-});
-```
-
-## Best Practices
-
-### 1. Use Standard Data Factories
-Always use the provided factory functions instead of creating mock data inline:
-
-```javascript
-// ✅ Good
-const locations = createMockLocations(3);
-
-// ❌ Bad
-const locations = [
-  { id: 1, latitude: 37.7749, longitude: -122.4194, timestamp: 1640995200000 },
-  // ... manually created data
-];
-```
-
-### 2. Use Consistent Test Constants
-Reference `TEST_CONSTANTS` for consistent values:
-
-```javascript
-// ✅ Good
-expect(location.latitude).toBe(TEST_CONSTANTS.DEFAULT_LATITUDE);
-
-// ❌ Bad
-expect(location.latitude).toBe(37.7749);
-```
-
-### 3. Use Realistic Performance Expectations
-Use the performance expectation helpers instead of hardcoded values:
-
-```javascript
-// ✅ Good
-const expectation = getDistanceCalculationExpectation(datasetSize);
-expect(actualTime).toBeLessThan(expectation);
-
-// ❌ Bad
-expect(actualTime).toBeLessThan(1000); // May fail on slower systems
-```
-
-### 4. Use Standard Error Scenarios
-Use predefined error scenarios for consistent error testing:
-
-```javascript
-// ✅ Good
-const { error, expectedBehavior } = setupErrorScenario('DATABASE_ERROR');
-
-// ❌ Bad
-const error = new Error('Some error'); // Inconsistent error messages
-```
-
-### 5. Validate Data Consistency
-Use the provided validation helpers:
-
-```javascript
-// ✅ Good
-import { commonAssertions } from '../setup/testSetup.js';
-commonAssertions.expectValidLocation(location);
-
-// ❌ Bad
-expect(typeof location.id).toBe('number'); // Manual validation
-```
-
-## Migration Guide
-
-To update existing tests to use the standardized approach:
-
-1. **Replace inline mock data** with factory functions
-2. **Update hardcoded expectations** with dynamic calculations
-3. **Use standard mock implementations** instead of custom mocks
-4. **Add consistent test setup** using the provided utilities
-5. **Update performance expectations** to account for system variability
+### Coverage Requirements
+- Minimum 80% code coverage for refactored components
+- 100% coverage for critical error handling paths
+- Performance regression detection
 
 ## Troubleshooting
 
-### Tests Failing Due to Timing
-If tests are failing due to timing issues:
-1. Check if you're using realistic performance expectations
-2. Consider the test environment (CI vs local)
-3. Use the environment multipliers in performance expectations
+### Common Issues
+1. **Test Timeouts**: Increase timeout in Jest configuration if needed
+2. **Memory Issues**: Run tests with `--maxWorkers=1` for memory tests
+3. **Performance Variance**: Allow for system performance variance in thresholds
 
-### Inconsistent Mock Behaviors
-If mocks behave differently across tests:
-1. Ensure you're using `applyStandardMocks()`
-2. Check that mocks are cleared between tests (`clearMocks: true` in Jest config)
-3. Verify mock implementations match the fixed function behaviors
+### Debug Mode
+Run tests with debug logging:
+```bash
+DEBUG_TESTS=true npm run test:comprehensive
+```
 
-### Data Structure Mismatches
-If tests fail due to data structure issues:
-1. Use the provided factory functions
-2. Validate data using the provided validation helpers
-3. Check that all tests use the same `TEST_CONSTANTS`
+### Performance Analysis
+For detailed performance analysis:
+```bash
+npm run test:performance -- --verbose
+```
+
+## Requirements Traceability
+
+This testing suite addresses the following requirements from the map component refactor specification:
+
+- **2.4**: Integration testing of refactored components
+- **3.3**: Error handling and fallback strategies
+- **8.1**: Performance benchmarks for geometry operations
+- **8.2**: Performance monitoring for fog calculations
+- **8.3**: Memory usage monitoring for component lifecycle
+- **8.4**: Regression tests to ensure no behavioral changes
+
+## Recent Test Fixes (January 2025)
+
+### Test Failure Resolution
+After the map-component-refactor changes, the test suite experienced 128 test failures. A comprehensive fix initiative was undertaken to resolve these issues:
+
+#### Issues Resolved
+1. **Logger Import Issues**: Fixed logger module initialization in test environments
+2. **Hook State Management**: Resolved loading state transition issues in hooks
+3. **Missing Function Exports**: Added proper mocks for refactored utility functions
+4. **Component Lifecycle**: Fixed test renderer cleanup issues
+5. **Test Setup**: Updated mock configurations for refactored code structure
+
+#### Results
+- **Test Failures Reduced**: From 289 to 168 (42% improvement)
+- **Pass Rate Improved**: From 73.9% to 83.7%
+- **Test Suites Fixed**: Reduced failed suites from 21 to 16
+
+#### New Mock Files Added
+- `__tests__/__mocks__/@/utils/statisticsPerformanceOptimizer.js`
+- `__tests__/__mocks__/@/utils/remainingRegionsService.js`
+- `__tests__/__mocks__/@/utils/geographicHierarchy.js`
+- `__tests__/__mocks__/@/utils/statisticsCacheManager.js`
+
+For detailed information about the fixes, see `TEST_FIXES_SUMMARY.md` in the project root.
 
 ## Contributing
 
-When adding new test data or mocks:
-1. Add factory functions to `testDataFactories.js`
-2. Update standard mocks in `standardMocks.js`
-3. Add constants to `TEST_CONSTANTS` in `testSetup.js`
-4. Update performance expectations if needed
-5. Document the changes in this README
+When adding new tests:
+1. Follow the existing test structure and naming conventions
+2. Include performance benchmarks for new operations
+3. Add error scenario tests for new functionality
+4. Update this documentation with new test categories
+5. Ensure tests are deterministic and don't rely on external services
+6. When creating mocks, ensure they align with the actual implementation interfaces

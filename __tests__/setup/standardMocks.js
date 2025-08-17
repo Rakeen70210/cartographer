@@ -93,43 +93,16 @@ export const createStandardNetworkMocks = () => ({
   retryWithBackoff: jest.fn().mockImplementation(async (fn) => await fn())
 });
 
-// Standardized calculation mocks
+// Standardized calculation mocks - import from the new mock files
+const distanceCalculatorMock = require('../__mocks__/@/utils/distanceCalculator');
+const worldExplorationCalculatorMock = require('../__mocks__/@/utils/worldExplorationCalculator');
+
 export const createStandardCalculationMocks = () => ({
-  // Distance calculator
-  calculateTotalDistance: jest.fn().mockResolvedValue({
-    miles: TEST_CONSTANTS.DEFAULT_DISTANCE_MILES,
-    kilometers: TEST_CONSTANTS.DEFAULT_DISTANCE_KILOMETERS
-  }),
-  calculateHaversineDistance: jest.fn().mockReturnValue(TEST_CONSTANTS.DEFAULT_DISTANCE_METERS),
-  formatDistance: jest.fn().mockImplementation((distance, unit) => {
-    if (distance === 0) return `0 ${unit === 'miles' ? 'miles' : 'km'}`;
-    return `${distance.toFixed(2)} ${unit === 'miles' ? 'miles' : 'km'}`;
-  }),
-  validateCoordinates: jest.fn().mockImplementation((lat, lon) => {
-    return typeof lat === 'number' && typeof lon === 'number' &&
-           lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 &&
-           !isNaN(lat) && !isNaN(lon);
-  }),
+  // Distance calculator - use the comprehensive mock
+  ...distanceCalculatorMock,
   
-  // World exploration calculator
-  calculateWorldExplorationPercentage: jest.fn().mockResolvedValue({
-    percentage: TEST_CONSTANTS.DEFAULT_EXPLORATION_PERCENTAGE,
-    totalAreaKm2: TEST_CONSTANTS.EARTH_SURFACE_AREA_KM2,
-    exploredAreaKm2: TEST_CONSTANTS.DEFAULT_EXPLORED_AREA_KM2
-  }),
-  calculateRevealedArea: jest.fn().mockResolvedValue(TEST_CONSTANTS.DEFAULT_EXPLORED_AREA_KM2),
-  validateGeometryForArea: jest.fn().mockImplementation((geojson) => {
-    if (!geojson || typeof geojson !== 'object') return false;
-    const geometry = geojson.type === 'Feature' ? geojson.geometry : geojson;
-    return geometry?.type === 'Polygon' || geometry?.type === 'MultiPolygon';
-  }),
-  formatExplorationPercentage: jest.fn().mockImplementation((percentage, level = 'world') => {
-    switch (level) {
-      case 'world': return `${percentage.toFixed(3)}%`;
-      case 'country': return `${percentage.toFixed(2)}%`;
-      default: return `${percentage.toFixed(1)}%`;
-    }
-  }),
+  // World exploration calculator - use the comprehensive mock
+  ...worldExplorationCalculatorMock,
   
   // Geographic hierarchy
   buildGeographicHierarchy: jest.fn().mockResolvedValue([]),

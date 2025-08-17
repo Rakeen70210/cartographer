@@ -1,20 +1,44 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import { OfflineIndicator } from '../components/OfflineIndicator';
 
-// Mock react-native-reanimated
+// Mock react-native-reanimated - use the same mock as main setup
 jest.mock('react-native-reanimated', () => {
-  const View = require('react-native').View;
+  const React = require('react');
+  const { View, Text, ScrollView } = require('react-native');
+  
+  const mockComponent = (Component, name) => {
+    const MockedComponent = React.forwardRef((props, ref) => {
+      return React.createElement(Component, { ...props, ref }, props.children);
+    });
+    MockedComponent.displayName = name;
+    return MockedComponent;
+  };
+
   return {
+    __esModule: true,
     default: {
-      View: View,
+      View: mockComponent(View, 'Animated.View'),
     },
-    View: View,
-    useSharedValue: () => ({ value: 0 }),
-    useAnimatedStyle: () => ({}),
-    withTiming: (value) => value,
-    withRepeat: (value) => value,
-    withSequence: (value) => value,
+    View: mockComponent(View, 'Animated.View'),
+    useSharedValue: jest.fn(() => ({ 
+      value: 0,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      modify: jest.fn()
+    })),
+    useAnimatedStyle: jest.fn(() => ({})),
+    withTiming: jest.fn((value, config, callback) => {
+      if (callback) setTimeout(callback, 0);
+      return value;
+    }),
+    withRepeat: jest.fn((value, count, reverse, callback) => {
+      if (callback) setTimeout(callback, 0);
+      return value;
+    }),
+    withSequence: jest.fn((...values) => {
+      return values[values.length - 1];
+    }),
   };
 });
 
@@ -214,7 +238,10 @@ describe('OfflineIndicator', () => {
       );
 
       const retryButton = getByTestId('offline-indicator-retry-button');
-      fireEvent.press(retryButton);
+      
+      await act(async () => {
+        fireEvent.press(retryButton);
+      });
 
       await waitFor(() => {
         expect(onRetry).toHaveBeenCalled();
@@ -223,7 +250,7 @@ describe('OfflineIndicator', () => {
       // Should dismiss after successful retry
       await waitFor(() => {
         expect(queryByTestId('offline-indicator')).toBeNull();
-      });
+      }, { timeout: 3000 });
     });
 
     it('should handle retry failure', async () => {

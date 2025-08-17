@@ -1,10 +1,10 @@
+import { logger } from '@/utils/logger';
 import * as Location from 'expo-location';
 import {
     deleteExpiredLocationGeocodings,
     getLocationGeocoding,
     saveLocationGeocoding
 } from './database';
-import { logger } from './logger';
 
 export interface GeographicRegion {
   country?: string;

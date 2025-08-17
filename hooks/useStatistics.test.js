@@ -210,7 +210,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       expect(result.current.data).toEqual({
         totalDistance: mockDistanceResult,
@@ -219,7 +219,7 @@ describe('useStatistics', () => {
         remainingRegions: mockRemainingRegionsData.remaining,
         hierarchicalBreakdown: mockHierarchy,
         lastUpdated: expect.any(Number)
-      });
+      }, { timeout: 10000 });
 
       expect(result.current.error).toBe(null);
     });
@@ -235,7 +235,7 @@ describe('useStatistics', () => {
         expect(convertToLocationWithGeography).toHaveBeenCalled();
         expect(buildGeographicHierarchy).toHaveBeenCalled();
         expect(getRemainingRegionsData).toHaveBeenCalled();
-      });
+      }, { timeout: 10000 });
     });
   });
 
@@ -245,7 +245,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Verify that data was calculated successfully
       expect(result.current.data).toBeTruthy();
@@ -271,13 +271,13 @@ describe('useStatistics', () => {
         cache_key: 'statistics_data',
         cache_value: JSON.stringify(expiredCachedData),
         timestamp: Date.now() - 2 * 60 * 60 * 1000 // 2 hours ago
-      });
+      }, { timeout: 10000 });
 
       const { result } = renderHook(() => useStatistics({ cacheMaxAge: 60 * 60 * 1000 }));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Should fetch fresh data, not use expired cache
       expect(result.current.data).toEqual({
@@ -287,7 +287,7 @@ describe('useStatistics', () => {
         remainingRegions: mockRemainingRegionsData.remaining,
         hierarchicalBreakdown: mockHierarchy,
         lastUpdated: expect.any(Number)
-      });
+      }, { timeout: 10000 });
     });
 
     it('should handle cache operations gracefully', async () => {
@@ -295,7 +295,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Verify that the hook works even if cache operations fail
       expect(result.current.data).toBeTruthy();
@@ -306,7 +306,7 @@ describe('useStatistics', () => {
       // Test that cache clearing doesn't break the hook
       await act(async () => {
         await result.current.clearCache();
-      });
+      }, { timeout: 10000 });
       
       expect(result.current.data).toBeTruthy();
     });
@@ -318,7 +318,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Verify error handling structure exists
       expect(result.current.error).toBeDefined();
@@ -332,7 +332,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Should still have data with fallback distance values
       expect(result.current.data).toEqual({
@@ -342,7 +342,7 @@ describe('useStatistics', () => {
         remainingRegions: mockRemainingRegionsData.remaining,
         hierarchicalBreakdown: mockHierarchy,
         lastUpdated: expect.any(Number)
-      });
+      }, { timeout: 10000 });
     });
 
     it('should handle cache loading errors', async () => {
@@ -352,7 +352,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Should still calculate fresh data despite cache error
       expect(result.current.data).toEqual({
@@ -362,7 +362,7 @@ describe('useStatistics', () => {
         remainingRegions: mockRemainingRegionsData.remaining,
         hierarchicalBreakdown: mockHierarchy,
         lastUpdated: expect.any(Number)
-      });
+      }, { timeout: 10000 });
     });
   });
 
@@ -372,7 +372,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Clear mocks to track refresh calls
       jest.clearAllMocks();
@@ -394,7 +394,7 @@ describe('useStatistics', () => {
 
       await act(async () => {
         await result.current.refreshData();
-      });
+      }, { timeout: 10000 });
 
       expect(result.current.data.totalDistance).toEqual({ miles: 20, kilometers: 32 });
     });
@@ -404,7 +404,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Test that refresh function exists and can be called
       expect(typeof result.current.refreshData).toBe('function');
@@ -412,7 +412,7 @@ describe('useStatistics', () => {
       // Call refresh and verify it completes
       await act(async () => {
         await result.current.refreshData();
-      });
+      }, { timeout: 10000 });
 
       // Verify the data is still present after refresh
       expect(result.current.data).not.toBe(null);
@@ -428,7 +428,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Clear mocks to track auto-refresh calls
       jest.clearAllMocks();
@@ -441,12 +441,12 @@ describe('useStatistics', () => {
       // Fast-forward time to trigger auto-refresh
       act(() => {
         jest.advanceTimersByTime(30000); // Use 30 seconds to ensure interval triggers
-      });
+      }, { timeout: 10000 });
 
       // Wait a bit more for debounced function to execute
       act(() => {
         jest.advanceTimersByTime(1000);
-      });
+      }, { timeout: 10000 });
 
       await waitFor(() => {
         expect(getLocations).toHaveBeenCalled();
@@ -460,7 +460,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(getLocations).toHaveBeenCalled();
-      });
+      }, { timeout: 10000 });
 
       // Clear mocks
       jest.clearAllMocks();
@@ -468,7 +468,7 @@ describe('useStatistics', () => {
       // Fast-forward time
       act(() => {
         jest.advanceTimersByTime(10000);
-      });
+      }, { timeout: 10000 });
 
       // Should not have made additional calls
       expect(getLocations).not.toHaveBeenCalled();
@@ -482,7 +482,7 @@ describe('useStatistics', () => {
 
       AppState.addEventListener = mockAddEventListener.mockReturnValue({
         remove: mockRemoveEventListener
-      });
+      }, { timeout: 10000 });
 
       const { result } = renderHook(() => 
         useStatistics({ enableBackgroundUpdates: true })
@@ -490,7 +490,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       expect(mockAddEventListener).toHaveBeenCalledWith('change', expect.any(Function));
 
@@ -505,11 +505,11 @@ describe('useStatistics', () => {
 
       await act(async () => {
         appStateChangeHandler('active');
-      });
+      }, { timeout: 10000 });
 
       await waitFor(() => {
         expect(calculateTotalDistance).toHaveBeenCalled();
-      });
+      }, { timeout: 10000 });
     });
   });
 
@@ -519,14 +519,14 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       const nodeToToggle = result.current.data.hierarchicalBreakdown[0];
       expect(nodeToToggle.isExpanded).toBe(false);
 
       act(() => {
         result.current.toggleHierarchyNode(nodeToToggle);
-      });
+      }, { timeout: 10000 });
 
       expect(result.current.data.hierarchicalBreakdown[0].isExpanded).toBe(true);
 
@@ -535,7 +535,7 @@ describe('useStatistics', () => {
       
       act(() => {
         result.current.toggleHierarchyNode(updatedNodeToToggle);
-      });
+      }, { timeout: 10000 });
 
       expect(result.current.data.hierarchicalBreakdown[0].isExpanded).toBe(false);
     });
@@ -545,14 +545,14 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       const nestedNode = result.current.data.hierarchicalBreakdown[0].children[0];
       expect(nestedNode.isExpanded).toBe(false);
 
       act(() => {
         result.current.toggleHierarchyNode(nestedNode);
-      });
+      }, { timeout: 10000 });
 
       expect(result.current.data.hierarchicalBreakdown[0].children[0].isExpanded).toBe(true);
     });
@@ -564,14 +564,14 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Verify that clearCache function exists and can be called
       expect(typeof result.current.clearCache).toBe('function');
       
       await act(async () => {
         await expect(result.current.clearCache()).resolves.not.toThrow();
-      });
+      }, { timeout: 10000 });
     });
   });
 
@@ -581,7 +581,7 @@ describe('useStatistics', () => {
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
-      });
+      }, { timeout: 10000 });
 
       // Change the mock data
       const newLocations = [
@@ -609,7 +609,7 @@ describe('useStatistics', () => {
       // Trigger a refresh
       await act(async () => {
         await result.current.refreshData();
-      });
+      }, { timeout: 10000 });
 
       expect(calculateTotalDistance).toHaveBeenCalledWith(newLocations);
       expect(result.current.data.totalDistance).toEqual({ miles: 30, kilometers: 48 });

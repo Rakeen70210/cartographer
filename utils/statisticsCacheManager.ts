@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import {
     clearAllStatisticsCache,
     deleteExpiredStatisticsCache,
@@ -6,7 +7,6 @@ import {
     getStatisticsCache,
     saveStatisticsCache
 } from './database';
-import { logger } from './logger';
 import { performanceMonitor } from './statisticsPerformanceOptimizer';
 
 /**

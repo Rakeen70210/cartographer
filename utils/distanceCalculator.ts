@@ -1,4 +1,4 @@
-import { logger } from './logger';
+import { logger } from '@/utils/logger';
 
 export interface Location {
   id: number;
@@ -57,7 +57,7 @@ export const calculateHaversineDistance = (
   const deltaLon = lon2Rad - lon1Rad;
 
   // Haversine formula
-  const a = 
+  const a =
     Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
     Math.cos(lat1Rad) * Math.cos(lat2Rad) *
     Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
@@ -129,21 +129,21 @@ export const calculateTotalDistance = async (locations: Location[]): Promise<Dis
 
     // Process in chunks to avoid blocking the event loop for large datasets
     const CHUNK_SIZE = 1000;
-    
+
     for (let chunkStart = 1; chunkStart < sortedLocations.length; chunkStart += CHUNK_SIZE) {
       const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, sortedLocations.length);
-      
+
       // Calculate distance between consecutive points in this chunk
       for (let i = chunkStart; i < chunkEnd; i++) {
         const prevLocation = sortedLocations[i - 1];
         const currentLocation = sortedLocations[i];
 
         // Validate that location objects have required properties
-        if (!prevLocation || !currentLocation || 
-            typeof prevLocation.latitude !== 'number' || 
-            typeof prevLocation.longitude !== 'number' ||
-            typeof currentLocation.latitude !== 'number' || 
-            typeof currentLocation.longitude !== 'number') {
+        if (!prevLocation || !currentLocation ||
+          typeof prevLocation.latitude !== 'number' ||
+          typeof prevLocation.longitude !== 'number' ||
+          typeof currentLocation.latitude !== 'number' ||
+          typeof currentLocation.longitude !== 'number') {
           invalidSegments++;
           continue;
         }

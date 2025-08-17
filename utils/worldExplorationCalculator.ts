@@ -1,5 +1,5 @@
+import { logger } from '@/utils/logger';
 import * as turf from '@turf/turf';
-import { logger } from './logger';
 
 export interface RevealedArea {
   id: number;
@@ -54,7 +54,12 @@ export const calculateRevealedArea = async (revealedAreas: RevealedArea[]): Prom
         if (geojson.type === 'Feature') {
           feature = geojson as turf.Feature<turf.Polygon | turf.MultiPolygon>;
         } else if (geojson.type === 'Polygon' || geojson.type === 'MultiPolygon') {
-          feature = turf.feature(geojson);
+          // Manual feature creation since turf.feature is not available in this version
+          feature = {
+            type: 'Feature',
+            geometry: geojson,
+            properties: {}
+          };
         } else {
           logger.warn('WorldExplorationCalculator: Unsupported geometry type', { 
             areaId: area.id, 
@@ -367,6 +372,7 @@ export const validateGeometryForArea = (geojson: any): boolean => {
 export const calculateSingleFeatureArea = (geojson: any): number => {
   try {
     if (!validateGeometryForArea(geojson)) {
+      logger.debug('WorldExplorationCalculator: Invalid geometry for area calculation');
       return 0;
     }
 
@@ -375,11 +381,32 @@ export const calculateSingleFeatureArea = (geojson: any): number => {
     if (geojson.type === 'Feature') {
       feature = geojson;
     } else {
-      feature = turf.feature(geojson);
+      // Manual feature creation since turf.feature is not available in this version
+      feature = {
+        type: 'Feature',
+        geometry: geojson,
+        properties: {}
+      };
+    }
+
+    // Validate the feature before calculating area
+    if (!feature || !feature.geometry) {
+      console.log('WorldExplorationCalculator: Feature has no geometry');
+      return 0;
     }
 
     const areaM2 = turf.area(feature);
-    return areaM2 / 1000000; // Convert to square kilometers
+    
+    // Ensure we get a valid number
+    if (!isFinite(areaM2) || areaM2 <= 0) {
+      logger.debug('WorldExplorationCalculator: Invalid area calculation result:', areaM2);
+      return 0;
+    }
+    
+    const areaKm2 = areaM2 / 1000000; // Convert to square kilometers
+    
+    logger.debug('WorldExplorationCalculator: Calculated area:', { areaM2, areaKm2 });
+    return areaKm2;
 
   } catch (error) {
     logger.debug('WorldExplorationCalculator: Error calculating single feature area:', error);

@@ -1,0 +1,49 @@
+{
+  "suites": {
+    "integration": {
+      "name": "Integration Tests",
+      "status": "failed",
+      "executionTime": 270,
+      "error": "Command failed: npx jest --testPathPattern __tests__/integration/**/*.test.js --testTimeout 60000 --verbose --detectOpenHandles --forceExit --maxWorkers=1 --coverage --coverageDirectory coverage/integration\ntestPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n",
+      "output": "testPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n"
+    },
+    "performance": {
+      "name": "Performance Tests",
+      "status": "failed",
+      "executionTime": 259,
+      "error": "Command failed: npx jest --testPathPattern __tests__/performance/**/*.test.js --testTimeout 120000 --verbose --detectOpenHandles --forceExit --maxWorkers=1 --coverage --coverageDirectory coverage/performance\ntestPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n",
+      "output": "testPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n"
+    },
+    "errorScenarios": {
+      "name": "Error Scenario Tests",
+      "status": "failed",
+      "executionTime": 262,
+      "error": "Command failed: npx jest --testPathPattern __tests__/error-scenarios/**/*.test.js --testTimeout 60000 --verbose --detectOpenHandles --forceExit --maxWorkers=1\ntestPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n",
+      "output": "testPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n"
+    },
+    "memory": {
+      "name": "Memory Tests",
+      "status": "failed",
+      "executionTime": 282,
+      "error": "Command failed: npx jest --testPathPattern __tests__/memory/**/*.test.js --testTimeout 90000 --verbose --detectOpenHandles --forceExit --maxWorkers=1\ntestPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n",
+      "output": "testPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n"
+    },
+    "regression": {
+      "name": "Regression Tests",
+      "status": "failed",
+      "executionTime": 274,
+      "error": "Command failed: npx jest --testPathPattern __tests__/regression/**/*.test.js --testTimeout 60000 --verbose --detectOpenHandles --forceExit --maxWorkers=1\ntestPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n",
+      "output": "testPathPattern:\n\n  Option \"testPathPattern\" was replaced by \"--testPathPatterns\". \"--testPathPatterns\" is only available as a command-line option.\n  \n  Please update your configuration.\n\n  CLI Options Documentation:\n  https://jestjs.io/docs/cli\n\n"
+    }
+  },
+  "summary": {
+    "totalSuites": 5,
+    "passedSuites": 0,
+    "failedSuites": 5,
+    "totalTests": 0,
+    "passedTests": 0,
+    "failedTests": 0,
+    "totalTime": 1347,
+    "coverage": null
+  }
+}

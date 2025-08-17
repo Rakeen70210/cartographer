@@ -164,7 +164,7 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
     } catch (error) {
       logger.error('useOfflineStatistics: Error calculating data hash:', error);
       // Re-throw the error so it can be handled by the caller
-      throw error;
+      throw new Error(`Database access error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, []);
 
@@ -222,7 +222,13 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       let hasGeocodingData = false;
       try {
         const locationsWithGeography = await convertToLocationWithGeography();
-        hasGeocodingData = locationsWithGeography.some(loc => loc.country || loc.state || loc.city);
+        hasGeocodingData = locationsWithGeography.length > 0 && 
+                          locationsWithGeography.some(loc => loc.country || loc.state || loc.city);
+        logger.debug('useOfflineStatistics: Geocoding data assessment:', { 
+          locationsCount: locationsWithGeography.length,
+          hasGeocodingData,
+          sampleLocation: locationsWithGeography[0]
+        });
       } catch (error) {
         logger.debug('useOfflineStatistics: Error getting geocoding data:', error);
         hasGeocodingData = false;
@@ -235,7 +241,15 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
         canCalculateHierarchy: hasGeocodingData
       };
 
-      await saveStatisticsCache(OFFLINE_CACHE_KEYS.OFFLINE_CAPABILITIES, capabilities);
+      logger.debug('useOfflineStatistics: Assessed capabilities:', capabilities);
+
+      try {
+        await saveStatisticsCache(OFFLINE_CACHE_KEYS.OFFLINE_CAPABILITIES, capabilities);
+      } catch (cacheError) {
+        logger.debug('useOfflineStatistics: Error caching capabilities:', cacheError);
+        // Continue without caching
+      }
+      
       return capabilities;
     } catch (error) {
       logger.error('useOfflineStatistics: Error assessing offline capabilities:', error);
@@ -450,7 +464,7 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
         lastUpdated: Date.now(),
         isOfflineData: isOffline,
         offlineReason: isOffline ? (forceOffline ? 'Forced offline mode' : 'No internet connection') : undefined,
-        dataSource: isOffline ? 'offline' : 'online',
+        dataSource: forcedModeRef.current === 'offline' ? 'offline' : (isOffline ? 'offline' : 'online'),
         networkStatus
       };
 
@@ -505,12 +519,20 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
         currentDataHash = await calculateDataHash();
         hasDataChanged = currentDataHash !== lastDataHashRef.current;
       } catch (hashError) {
-        // If we can't calculate hash due to database error, we'll need to handle this
-        logger.debug('useOfflineStatistics: Error calculating data hash, will attempt calculation anyway');
+        // If we can't calculate hash due to database error, this is a serious error
+        logger.error('useOfflineStatistics: Error calculating data hash:', hashError);
+        // Set error state and return early if we can't access basic data
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          isRefreshing: false,
+          error: `Database access error: ${hashError instanceof Error ? hashError.message : 'Unknown database error'}`
+        }));
+        return;
       }
 
-      // Try to load from cache first if not forcing refresh
-      if (!forceRefresh) {
+      // Try to load from cache first if not forcing refresh and not in forced offline mode
+      if (!forceRefresh && forcedModeRef.current !== 'offline') {
         const cachedData = await loadCachedData();
         if (cachedData && (!hasDataChanged || isOffline)) {
           setState(prev => ({
@@ -539,25 +561,34 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
       // Calculate new statistics with error handling
       let statisticsData;
       try {
-        statisticsData = await calculateStatistics(isOffline);
+        // Pass true for forceOffline if we're in forced offline mode
+        const forceOffline = forcedModeRef.current === 'offline';
+        statisticsData = await calculateStatistics(forceOffline);
       } catch (calculationError) {
+        logger.error('useOfflineStatistics: Statistics calculation failed:', calculationError);
+        
         // If calculation fails, try to use cached data as fallback
         if (opts.fallbackToCache) {
-          const cachedData = await loadCachedData();
-          if (cachedData) {
-            setState(prev => ({
-              ...prev,
-              data: {
-                ...cachedData,
-                isOfflineData: true,
-                offlineReason: 'Error occurred, using cached data',
-                dataSource: 'cache'
-              },
-              isLoading: false,
-              isRefreshing: false,
-              error: `Using cached data: ${calculationError instanceof Error ? calculationError.message : 'Unknown error'}`
-            }));
-            return;
+          try {
+            const cachedData = await loadCachedData();
+            if (cachedData) {
+              logger.debug('useOfflineStatistics: Using cached data as fallback');
+              setState(prev => ({
+                ...prev,
+                data: {
+                  ...cachedData,
+                  isOfflineData: true,
+                  offlineReason: 'Error occurred, using cached data',
+                  dataSource: 'cache'
+                },
+                isLoading: false,
+                isRefreshing: false,
+                error: `Using cached data: ${calculationError instanceof Error ? calculationError.message : 'Unknown error'}`
+              }));
+              return;
+            }
+          } catch (cacheError) {
+            logger.error('useOfflineStatistics: Error loading cached fallback data:', cacheError);
           }
         }
         throw calculationError;
@@ -634,11 +665,15 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
    */
   const clearCache = useCallback(async (): Promise<void> => {
     try {
+      // Always call the database clear function, even if it might fail
       await clearAllStatisticsCache();
       lastDataHashRef.current = '';
       logger.debug('useOfflineStatistics: Cleared statistics cache');
     } catch (error) {
       logger.error('useOfflineStatistics: Error clearing cache:', error);
+      // Still reset the hash even if database clear fails
+      lastDataHashRef.current = '';
+      // Don't re-throw in normal operation, but ensure the database function was called
     }
   }, []);
 
@@ -682,19 +717,37 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
   /**
    * Force offline mode
    */
-  const forceOfflineMode = useCallback(() => {
+  const forceOfflineMode = useCallback(async () => {
     forcedModeRef.current = 'offline';
     logger.debug('useOfflineStatistics: Forced offline mode enabled');
-    fetchStatisticsData(true);
+    
+    // Update state immediately to reflect forced offline mode
+    setState(prev => ({
+      ...prev,
+      isOffline: true
+    }));
+    
+    // Wait for any ongoing calculation to complete
+    while (isCalculatingRef.current) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    
+    await fetchStatisticsData(true);
   }, [fetchStatisticsData]);
 
   /**
    * Force online mode
    */
-  const forceOnlineMode = useCallback(() => {
+  const forceOnlineMode = useCallback(async () => {
     forcedModeRef.current = 'online';
     logger.debug('useOfflineStatistics: Forced online mode enabled');
-    fetchStatisticsData(true);
+    
+    // Wait for any ongoing calculation to complete
+    while (isCalculatingRef.current) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    
+    await fetchStatisticsData(true);
   }, [fetchStatisticsData]);
 
   /**
@@ -791,9 +844,19 @@ export const useOfflineStatistics = (options: UseOfflineStatisticsOptions = {}):
     }
 
     if (networkListenerRef.current) {
-      networkListenerRef.current();
+      try {
+        networkListenerRef.current();
+      } catch (error) {
+        logger.error('Error removing network listener:', error);
+      }
       networkListenerRef.current = null;
     }
+    
+    // Mark as calculating false to prevent concurrent operations
+    isCalculatingRef.current = false;
+    
+    // Reset forced mode
+    forcedModeRef.current = null;
   }, []);
 
   // Initial data fetch and setup

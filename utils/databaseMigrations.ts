@@ -1,5 +1,5 @@
+import { logger } from '@/utils/logger';
 import { database } from './database';
-import { logger } from './logger';
 
 interface Migration {
   version: number;

@@ -1,8 +1,9 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { useEffect, useState } from 'react';
-import { database } from '../utils/database';
-import { logger } from '../utils/logger';
+
+import { database } from '@/utils/database';
+import { logger } from '@/utils/logger';
 
 const LOCATION_TRACKING_TASK_NAME = 'location-tracking';
 
@@ -127,19 +128,26 @@ const cleanupLocationTracking = async (subscription: Promise<Location.LocationSu
   }
 };
 
+/**
+ * Custom hook for managing location tracking with background support.
+ * Handles permission requests, location watching, and background task management.
+ * 
+ * @returns Object containing current location and any error messages
+ */
 export default function useLocationTracking() {
-  logger.debug('useLocationTracking: Hook started');
-  
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    logger.debug('useLocationTracking: useEffect triggered');
+    let isMounted = true;
+    let subscription: Promise<Location.LocationSubscription> | null = null;
     
     const initializeLocationTracking = async () => {
+      if (!isMounted) return;
+      
       // Request permissions
       const hasPermissions = await requestLocationPermissions(setErrorMsg);
-      if (!hasPermissions) {
+      if (!hasPermissions || !isMounted) {
         return;
       }
 
@@ -147,27 +155,37 @@ export default function useLocationTracking() {
         // Start location tracking
         await startLocationTracking();
         
+        if (!isMounted) return;
+        
         // Get current location
         await getCurrentLocation(setLocation);
       } catch (error) {
-        logger.error('Error in initializeLocationTracking:', error);
-        setErrorMsg(`Location error: ${error}`);
+        if (isMounted) {
+          logger.error('Error in initializeLocationTracking:', error);
+          setErrorMsg(`Location error: ${error}`);
+        }
       }
     };
 
     // Set up location watch subscription
-    const subscription = setupLocationWatch(setLocation);
+    subscription = setupLocationWatch(setLocation);
 
     // Initialize location tracking
     initializeLocationTracking().catch(error => {
-      logger.error('Error in initializeLocationTracking promise:', error);
+      if (isMounted) {
+        logger.error('Error in initializeLocationTracking promise:', error);
+      }
     });
 
     return () => {
-      cleanupLocationTracking(subscription);
+      isMounted = false;
+      if (subscription) {
+        cleanupLocationTracking(subscription).catch(error => {
+          logger.error('Error in cleanup:', error);
+        });
+      }
     };
   }, []);
 
-  logger.debug('useLocationTracking: Returning state - location:', !!location, 'error:', errorMsg);
   return { location, errorMsg };
 }

@@ -10,7 +10,14 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:core": "node __tests__/run-core-tests.js",
+    "test:comprehensive": "node __tests__/run-comprehensive-tests.js",
+    "test:integration": "node __tests__/run-comprehensive-tests.js --suite integration",
+    "test:performance": "node __tests__/run-comprehensive-tests.js --suite performance",
+    "test:error-scenarios": "node __tests__/run-comprehensive-tests.js --suite errorScenarios",
+    "test:memory": "node __tests__/run-comprehensive-tests.js --suite memory",
+    "test:regression": "node __tests__/run-comprehensive-tests.js --suite regression"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

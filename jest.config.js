@@ -3,7 +3,8 @@ module.exports = {
   testEnvironment: 'node',
   setupFilesAfterEnv: [
     '<rootDir>/jest.setup.js',
-    '<rootDir>/__tests__/setup/jestSetup.js'
+    '<rootDir>/__tests__/setup/jestSetup.js',
+    '<rootDir>/__tests__/setup/jest.setup.js'
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   transform: {

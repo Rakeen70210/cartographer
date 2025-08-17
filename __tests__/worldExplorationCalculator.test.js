@@ -1,3 +1,7 @@
+// Unmock the world exploration calculator for this test
+jest.unmock('../utils/worldExplorationCalculator');
+jest.unmock('../utils/logger');
+
 import {
     calculateRevealedArea,
     calculateSingleFeatureArea,

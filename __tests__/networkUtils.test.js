@@ -192,15 +192,18 @@ describe('NetworkUtils', () => {
       const waitPromise = networkUtils.waitForConnection(5000);
 
       // Simulate coming online
-      setTimeout(() => {
-        listenerCallback({
-          isConnected: true,
-          isInternetReachable: true,
-          type: 'wifi'
-        });
+      const timeoutId = setTimeout(() => {
+        if (listenerCallback) {
+          listenerCallback({
+            isConnected: true,
+            isInternetReachable: true,
+            type: 'wifi'
+          });
+        }
       }, 100);
 
       const result = await waitPromise;
+      clearTimeout(timeoutId); // Clean up timeout
       expect(result).toBe(true);
     });
 

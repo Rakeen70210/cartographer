@@ -362,6 +362,14 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
     try {
       isCalculatingRef.current = true;
 
+      // Update loading state immediately
+      setState(prev => ({
+        ...prev,
+        isLoading: prev.data === null,
+        isRefreshing: prev.data !== null,
+        error: null
+      }));
+
       // Check if data has changed using cache manager
       const [locations, revealedAreas] = await Promise.all([
         getLocations(),
@@ -371,59 +379,64 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
       let hasDataChanged = true; // Default to true to ensure calculation
       
       if (statisticsCacheManager && typeof statisticsCacheManager.hasDataChanged === 'function') {
-        const locationChanged = await statisticsCacheManager.hasDataChanged(
-          CACHE_KEYS.LOCATION_HASH, 
-          locations
-        );
-        const revealedAreasChanged = await statisticsCacheManager.hasDataChanged(
-          CACHE_KEYS.REVEALED_AREAS_HASH, 
-          revealedAreas
-        );
+        try {
+          const locationChanged = await statisticsCacheManager.hasDataChanged(
+            CACHE_KEYS.LOCATION_HASH, 
+            locations
+          );
+          const revealedAreasChanged = await statisticsCacheManager.hasDataChanged(
+            CACHE_KEYS.REVEALED_AREAS_HASH, 
+            revealedAreas
+          );
 
-        hasDataChanged = locationChanged || revealedAreasChanged;
+          hasDataChanged = locationChanged || revealedAreasChanged;
 
-        if (!forceRefresh && !hasDataChanged) {
-          // Try to load from cache if data hasn't changed
-          const cachedData = await loadCachedData();
-          if (cachedData) {
-            setState(prev => ({
-              ...prev,
-              data: cachedData,
-              isLoading: false,
-              isRefreshing: false,
-              error: null,
-              lastUpdated: cachedData.lastUpdated
-            }));
-            return;
+          if (!forceRefresh && !hasDataChanged) {
+            // Try to load from cache if data hasn't changed
+            const cachedData = await loadCachedData();
+            if (cachedData) {
+              setState(prev => ({
+                ...prev,
+                data: cachedData,
+                isLoading: false,
+                isRefreshing: false,
+                error: null,
+                lastUpdated: cachedData.lastUpdated
+              }));
+              return;
+            }
           }
+
+          // Invalidate dependent caches if data changed
+          if (hasDataChanged) {
+            if (locationChanged && typeof statisticsCacheManager.invalidate === 'function') {
+              await statisticsCacheManager.invalidate(CACHE_KEYS.LOCATION_HASH);
+            }
+            if (revealedAreasChanged && typeof statisticsCacheManager.invalidate === 'function') {
+              await statisticsCacheManager.invalidate(CACHE_KEYS.REVEALED_AREAS_HASH);
+            }
+          }
+        } catch (cacheError) {
+          logger.warn('useStatistics: Cache operations failed, proceeding with fresh calculation:', cacheError);
+          hasDataChanged = true; // Force fresh calculation if cache fails
         }
-
-        // Invalidate dependent caches if data changed
-        if (hasDataChanged) {
-          if (locationChanged && typeof statisticsCacheManager.invalidate === 'function') {
-            await statisticsCacheManager.invalidate(CACHE_KEYS.LOCATION_HASH);
-          }
-          if (revealedAreasChanged && typeof statisticsCacheManager.invalidate === 'function') {
-            await statisticsCacheManager.invalidate(CACHE_KEYS.REVEALED_AREAS_HASH);
-          }
-        }
+      } else {
+        // Fallback when cache manager is not available (e.g., in tests)
+        hasDataChanged = true; // Always calculate when cache is not available
       }
-
-      // Update loading state
-      setState(prev => ({
-        ...prev,
-        isLoading: prev.data === null,
-        isRefreshing: prev.data !== null,
-        error: null
-      }));
 
       // Calculate new statistics
       const statisticsData = await calculateStatistics();
 
       // Cache the new data
-      await cacheStatisticsData(statisticsData);
+      try {
+        await cacheStatisticsData(statisticsData);
+      } catch (cacheError) {
+        logger.warn('useStatistics: Failed to cache statistics data:', cacheError);
+        // Continue without caching
+      }
 
-      // Update state
+      // Update state with results
       setState(prev => ({
         ...prev,
         data: statisticsData,
@@ -598,6 +611,11 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
     // Cancel any pending debounced operations
     statisticsDebouncer.cancel('auto_refresh');
     statisticsDebouncer.cancel('manual_refresh');
+    statisticsDebouncer.cancel('initial_fetch');
+    statisticsDebouncer.cancel('location_change_update');
+    
+    // Mark as calculating false to prevent concurrent operations
+    isCalculatingRef.current = false;
   }, []);
 
   // Initial data fetch and setup with cache warming
@@ -606,19 +624,32 @@ export const useStatistics = (options: UseStatisticsOptions = {}): UseStatistics
       try {
         // Warm cache on initialization if available
         if (statisticsCacheManager && typeof statisticsCacheManager.warmCache === 'function') {
-          await statisticsCacheManager.warmCache();
+          try {
+            await statisticsCacheManager.warmCache();
+          } catch (cacheError) {
+            logger.warn('useStatistics: Cache warming failed, continuing without cache:', cacheError);
+          }
         }
+        
+        // Direct call for initial fetch to ensure it happens immediately
+        await fetchStatisticsData(false).catch(error => {
+          logger.error('useStatistics: Initial fetch failed:', error);
+          // Ensure loading state is cleared on error
+          setState(prev => ({
+            ...prev,
+            isLoading: false,
+            error: error instanceof Error ? error.message : 'Failed to fetch statistics'
+          }));
+        });
       } catch (error) {
-        logger.warn('useStatistics: Cache warming failed, continuing without cache:', error);
+        logger.error('useStatistics: Initialization failed:', error);
+        // Ensure loading state is cleared even on initialization error
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Initialization failed'
+        }));
       }
-      
-      // Debounced initial fetch
-      const debouncedInitialFetch = statisticsDebouncer.debounce(
-        'initial_fetch',
-        () => fetchStatisticsData(false),
-        100
-      );
-      debouncedInitialFetch();
     };
 
     initializeStatistics();
@@ -665,11 +696,14 @@ export const useDistanceStatistics = () => {
   useEffect(() => {
     const fetchDistance = async () => {
       try {
+        setIsLoading(true);
         const locations = await getLocations();
         const result = await calculateTotalDistance(locations);
         setDistance(result);
       } catch (error) {
         logger.error('useDistanceStatistics: Error fetching distance:', error);
+        // Keep default values on error
+        setDistance({ miles: 0, kilometers: 0 });
       } finally {
         setIsLoading(false);
       }
@@ -695,6 +729,7 @@ export const useWorldExplorationStatistics = () => {
   useEffect(() => {
     const fetchWorldExploration = async () => {
       try {
+        setIsLoading(true);
         const revealedAreas = await getRevealedAreas();
         const revealedAreaObjects = revealedAreas.map((area, index) => ({
           id: index + 1,
@@ -705,6 +740,12 @@ export const useWorldExplorationStatistics = () => {
         setWorldExploration(result);
       } catch (error) {
         logger.error('useWorldExplorationStatistics: Error fetching world exploration:', error);
+        // Keep default values on error
+        setWorldExploration({
+          percentage: 0,
+          totalAreaKm2: 510072000,
+          exploredAreaKm2: 0
+        });
       } finally {
         setIsLoading(false);
       }

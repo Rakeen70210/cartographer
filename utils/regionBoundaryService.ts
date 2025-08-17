@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import * as turf from '@turf/turf';
 import {
     getAllRegionBoundaries,
@@ -10,7 +11,6 @@ import {
     getTotalRegionCounts,
     validateGeoJSONGeometry
 } from './geographicApiService';
-import { logger } from './logger';
 
 /**
  * Service for managing geographic region boundaries and area calculations
