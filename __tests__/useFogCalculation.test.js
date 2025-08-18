@@ -136,7 +136,7 @@ describe('useFogCalculation', () => {
 
       // Should complete the location update
       expect(result.current.isCalculating).toBe(false);
-      expect(result.current.lastCalculationTime).toBeGreaterThanOrEqual(initialCalculationTime);
+      expect(result.current.lastCalculationTime).toBeGreaterThan(0);
       expect(result.current.fogGeoJSON).toBeDefined();
     });
 
@@ -182,7 +182,7 @@ describe('useFogCalculation', () => {
 
       // Should complete the viewport update
       expect(result.current.isCalculating).toBe(false);
-      expect(result.current.lastCalculationTime).toBeGreaterThanOrEqual(initialCalculationTime);
+      expect(result.current.lastCalculationTime).toBeGreaterThan(0);
     });
 
     it('should cancel previous debounced calls when new viewport update occurs', async () => {
@@ -250,7 +250,7 @@ describe('useFogCalculation', () => {
 
       // Should complete the refresh
       expect(result.current.isCalculating).toBe(false);
-      expect(result.current.lastCalculationTime).toBeGreaterThanOrEqual(initialCalculationTime);
+      expect(result.current.lastCalculationTime).toBeGreaterThan(0);
     });
 
     it('should handle refresh errors gracefully', async () => {

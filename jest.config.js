@@ -2,9 +2,7 @@ module.exports = {
   preset: 'react-native',
   testEnvironment: 'node',
   setupFilesAfterEnv: [
-    '<rootDir>/jest.setup.js',
     '<rootDir>/__tests__/setup/jestSetup.js',
-    '<rootDir>/__tests__/setup/jest.setup.js'
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   transform: {
@@ -42,4 +40,12 @@ module.exports = {
   testTimeout: 30000,
   // Clear mocks between tests
   clearMocks: true,
+  // Reset mocks between tests
+  resetMocks: true,
+  // Restore mocks after each test
+  restoreMocks: true,
+  // Fix for React 18 act() warnings
+  globals: {
+    'process.env.NODE_ENV': 'test',
+  },
 };

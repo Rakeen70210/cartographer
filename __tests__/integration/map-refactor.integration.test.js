@@ -282,7 +282,8 @@ describe('Map Component Refactor Integration Tests', () => {
 
       const { result } = renderHook(() => useFogCalculation({
         debounceDelay: 50,
-        fallbackStrategy: 'world'
+        fallbackStrategy: 'world',
+        useSpatialIndexing: false // Disable spatial indexing to test direct database path
       }));
 
       // Wait for initial load to complete (which should fail)

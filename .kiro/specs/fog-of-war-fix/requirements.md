@@ -60,3 +60,25 @@ The fog of war feature in the Cartographer app is currently not working correctl
 2. WHEN difference operations encounter invalid geometries THEN the system SHALL handle errors gracefully and provide fallback fog display
 3. WHEN revealed areas have complex shapes THEN the system SHALL validate and sanitize geometries before difference operations
 4. WHEN difference operations fail THEN the system SHALL log detailed error information and continue functioning with fallback behavior
+
+### Requirement 6
+
+**User Story:** As a developer, I want the fog calculation system to avoid infinite logging loops and excessive debug output, so that the app performs efficiently and logs are readable.
+
+#### Acceptance Criteria
+
+1. WHEN fog calculations are performed THEN the system SHALL limit debug logging to prevent performance issues
+2. WHEN fog calculation errors occur THEN the system SHALL log errors once without creating infinite retry loops
+3. WHEN viewport changes frequently THEN the system SHALL debounce logging to prevent log spam
+4. WHEN fallback fog is used THEN the system SHALL log the fallback usage once per session, not repeatedly
+
+### Requirement 7
+
+**User Story:** As a user, I want the fog calculation to work correctly in Android emulator environments, so that I can test and use the app during development.
+
+#### Acceptance Criteria
+
+1. WHEN running in Android emulator THEN the fog calculation SHALL work without throwing "All fog calculations failed" errors
+2. WHEN using simulated GPS locations THEN the fog system SHALL properly calculate and display revealed areas
+3. WHEN the map loads initially THEN the fog system SHALL initialize without errors and display appropriate fog coverage
+4. WHEN no revealed areas exist THEN the fog system SHALL display viewport-based fog without errors

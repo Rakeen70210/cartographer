@@ -16,22 +16,27 @@ The fog of war system consists of three main components:
 
 ### 1. Fog Calculation Engine
 
-**Location**: `app/(tabs)/map.tsx` - `createFogFeatures()` function
+**Location**: `utils/fogCalculation.ts` and `hooks/useFogCalculation.ts`
 
-**Current Issue**: The difference operation fails with "Must have at least two features" error, indicating geometry validation problems.
+**Current Issues**: 
+1. Fog calculations are failing with "All fog calculations failed, using world fog" error
+2. Infinite logging loops causing performance issues
+3. Excessive debug output making logs unreadable
+4. Fog calculation failures in Android emulator environment
 
-**Root Cause**: The Turf.js `difference` function expects two valid Feature<Polygon> objects, but may be receiving:
-- FeatureCollection instead of Feature
-- Invalid or null geometries
-- Incorrect geometry types
+**Root Causes**:
+- Geometry validation may be too strict, causing valid geometries to be rejected
+- Error handling is triggering continuous retry loops
+- Debug logging is not properly throttled or controlled
+- Fallback strategies may not be working correctly in emulator environments
+- Initial fog calculation may be failing when no revealed areas exist
 
-**New Implementation**:
-- Import `difference` from `@turf/turf` (already imported)
-- Add geometry validation functions to ensure valid Feature<Polygon> inputs
-- Implement geometry sanitization before difference operations
-- Add comprehensive error handling with detailed logging
-- Provide fallback to viewport fog when difference operations fail
-- Return proper fog geometry with holes cut out for revealed areas
+**Updated Implementation Strategy**:
+- Implement logging throttling and rate limiting for debug messages
+- Add proper error recovery without infinite retry loops
+- Improve geometry validation to be more permissive of valid edge cases
+- Ensure fallback strategies work reliably in all environments
+- Add specific handling for empty revealed areas scenarios
 
 ### 2. Revealed Area Processing
 
@@ -139,23 +144,32 @@ const fogWithHoles: Feature<Polygon | MultiPolygon> = difference(worldPolygon, r
 
 ## Error Handling
 
-### Geometric Operation Failures
+### Current Error Scenarios
 
-The Turf.js difference operation can fail in several scenarios:
-- Invalid polygon geometry (null, undefined, or malformed coordinates)
-- Self-intersecting polygons
-- Extremely complex polygons
-- Incorrect feature types (expecting Feature<Polygon> but receiving other types)
-- Empty or degenerate geometries
+1. **"All fog calculations failed, using world fog"** - Primary fog calculation is failing consistently
+2. **Infinite logging loops** - Error conditions are causing continuous retry attempts with logging
+3. **Android emulator failures** - Fog calculation not working in development environment
+4. **Excessive debug output** - Performance impact from too much logging
 
-**Root Cause Analysis**: The "Must have at least two features" error indicates that the difference operation is receiving a FeatureCollection instead of individual Feature objects, or one of the geometries is invalid.
+### Updated Error Handling Strategy
 
-**Strategy**: 
-1. Implement geometry validation before difference operations
-2. Ensure proper Feature<Polygon> types are passed to difference function
-3. Add comprehensive try-catch blocks with fallback to viewport fog
-4. Implement geometry sanitization and repair functions
-5. Add detailed logging for debugging geometric issues
+**Logging Control**:
+1. Implement logging rate limiting to prevent spam
+2. Use log levels appropriately (debug vs info vs warn vs error)
+3. Add session-based logging to avoid repeated messages
+4. Throttle viewport change logging during map interactions
+
+**Error Recovery**:
+1. Implement circuit breaker pattern for failed fog calculations
+2. Add exponential backoff for retry attempts
+3. Ensure fallback strategies don't trigger infinite loops
+4. Provide graceful degradation when calculations consistently fail
+
+**Geometry Validation**:
+1. Make geometry validation more permissive for edge cases
+2. Add specific handling for empty/null revealed areas
+3. Ensure viewport bounds are always valid before fog calculation
+4. Add geometry repair functions for common issues
 
 ### Performance Considerations
 

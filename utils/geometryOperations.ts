@@ -199,7 +199,7 @@ export const unionPolygons = (polygons: RevealedArea[]): GeometryOperationResult
     };
   }
 
-  logger.debug('Unioning multiple polygons', { count: polygons.length });
+  logger.debugOnce('Unioning multiple polygons');
   let unioned: RevealedArea = polygons[0];
   let inputComplexity = getPolygonComplexity(polygons[0]);
   
@@ -247,7 +247,7 @@ export const unionPolygons = (polygons: RevealedArea[]): GeometryOperationResult
       const result = union(featureCollection);
       if (result && result.type === 'Feature') {
         unioned = result as RevealedArea;
-        logger.debug(`Successfully unioned polygon ${i}`);
+        // Removed excessive debug logging
       } else {
         logger.warn(`Union returned null or invalid result for polygon ${i}, skipping`);
         errors.push(`Union operation failed for polygon ${i}`);
@@ -270,7 +270,7 @@ export const unionPolygons = (polygons: RevealedArea[]): GeometryOperationResult
     errors.push(...finalValidation.errors.map(e => `Final result: ${e}`));
     debugGeometry(unioned, 'Invalid union result');
   } else {
-    logger.success('Polygon union completed successfully');
+    logger.successOnce('Polygon union completed successfully');
     warnings.push(...finalValidation.warnings.map(w => `Final result: ${w}`));
   }
   
@@ -305,7 +305,7 @@ export const performRobustDifference = (
   let fallbackUsed = false;
   
   try {
-    logger.debug('Starting robust difference operation');
+    logger.debugOnce('Starting robust difference operation');
     
     // Validate both geometries before operation
     const minuendValidation = validateGeometry(minuend);
@@ -374,9 +374,17 @@ export const performRobustDifference = (
       };
     }
     
-    // Perform the difference operation
-    logger.debug('Performing Turf.js difference operation');
-    const result = difference(sanitizedMinuend as any, sanitizedSubtrahend as any);
+    // Perform the difference operation with error handling
+    let result: Feature<Polygon | MultiPolygon> | null = null;
+    
+    try {
+      // Try the standard Turf.js difference operation
+      result = difference(sanitizedMinuend, sanitizedSubtrahend);
+    } catch (error) {
+      // If difference fails due to Turf.js compatibility issues, use fallback
+      logger.warn('Turf.js difference operation failed, using fallback approach');
+      result = null;
+    }
     
     if (!result) {
       logger.warn('Difference operation returned null - subtrahend may completely cover minuend');
@@ -421,7 +429,7 @@ export const performRobustDifference = (
     warnings.push(...resultValidation.warnings.map(w => `Result: ${w}`));
     
     const executionTime = Math.max(0.001, performance.now() - startTime);
-    logger.success(`Difference operation completed successfully in ${executionTime.toFixed(2)}ms`);
+    logger.successOnce('Difference operation completed successfully');
     
     return {
       result: result as Feature<Polygon | MultiPolygon>,

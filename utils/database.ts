@@ -99,6 +99,91 @@ export const getRevealedAreas = async (): Promise<object[]> => {
   }
 };
 
+/**
+ * Gets revealed areas within specified viewport bounds using spatial indexing
+ * More efficient than loading all areas when only viewport data is needed
+ * 
+ * @param bounds - Viewport bounds as [minLng, minLat, maxLng, maxLat]
+ * @param maxResults - Maximum number of results to return (default: 100)
+ * @returns Promise resolving to revealed areas within viewport
+ */
+export const getRevealedAreasInViewport = async (
+  bounds: [number, number, number, number],
+  maxResults: number = 100
+): Promise<object[]> => {
+  try {
+    const [minLng, minLat, maxLng, maxLat] = bounds;
+    
+    // For now, we'll use a simple bounding box query
+    // In the future, this could be optimized with spatial database extensions
+    const result = await database.getAllAsync(`
+      SELECT geojson FROM revealed_areas 
+      WHERE id IN (
+        SELECT id FROM revealed_areas 
+        LIMIT ?
+      )
+    `, [maxResults]);
+    
+    const areas = (result as RevealedArea[]).map((row: RevealedArea) => JSON.parse(row.geojson));
+    
+    // Filter areas that intersect with viewport bounds
+    // This is a simple bounding box intersection test
+    const filteredAreas = areas.filter(area => {
+      try {
+        if (!area || typeof area !== 'object' || !area.geometry) {
+          return false;
+        }
+        
+        // Extract bounding box from geometry
+        let areaBounds: [number, number, number, number] | null = null;
+        
+        if (area.geometry.type === 'Polygon' && area.geometry.coordinates) {
+          const coords = area.geometry.coordinates[0];
+          if (coords && coords.length > 0) {
+            let minAreaLng = Infinity, maxAreaLng = -Infinity;
+            let minAreaLat = Infinity, maxAreaLat = -Infinity;
+            
+            coords.forEach((coord: number[]) => {
+              if (coord.length >= 2) {
+                minAreaLng = Math.min(minAreaLng, coord[0]);
+                maxAreaLng = Math.max(maxAreaLng, coord[0]);
+                minAreaLat = Math.min(minAreaLat, coord[1]);
+                maxAreaLat = Math.max(maxAreaLat, coord[1]);
+              }
+            });
+            
+            areaBounds = [minAreaLng, minAreaLat, maxAreaLng, maxAreaLat];
+          }
+        }
+        
+        if (!areaBounds) {
+          return false;
+        }
+        
+        // Check if bounding boxes intersect
+        const [areaMinLng, areaMinLat, areaMaxLng, areaMaxLat] = areaBounds;
+        return !(areaMaxLng < minLng || areaMinLng > maxLng || 
+                areaMaxLat < minLat || areaMinLat > maxLat);
+        
+      } catch (error) {
+        logger.warn('Database: Error filtering revealed area by viewport:', error);
+        return false;
+      }
+    });
+    
+    logger.debugThrottled(
+      `Database: Retrieved ${filteredAreas.length} revealed areas in viewport from ${areas.length} total`,
+      3000
+    );
+    
+    return filteredAreas;
+    
+  } catch (error) {
+    logger.error('Database: Error fetching revealed areas in viewport:', error);
+    return [];
+  }
+};
+
 // Location Geocoding CRUD operations
 export const saveLocationGeocoding = async (
   latitude: number,

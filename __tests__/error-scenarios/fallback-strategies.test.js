@@ -41,7 +41,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
 
       const { result } = renderHook(() => useFogCalculation({
         debounceDelay: 50,
-        fallbackStrategy: 'world'
+        fallbackStrategy: 'world',
+        useSpatialIndexing: false // Disable spatial indexing to test direct database path
       }));
 
       await act(async () => {
@@ -76,7 +77,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
 
       const { result } = renderHook(() => useFogCalculation({
         debounceDelay: 50,
-        fallbackStrategy: 'viewport'
+        fallbackStrategy: 'viewport',
+        useSpatialIndexing: false // Disable spatial indexing to test direct database path
       }));
 
       // Wait for initialization to complete (should fail)
@@ -127,7 +129,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
 
       const { result } = renderHook(() => useFogCalculation({
         debounceDelay: 50,
-        fallbackStrategy: 'world'
+        fallbackStrategy: 'world',
+        useSpatialIndexing: false
       }));
 
       await act(async () => {
@@ -320,7 +323,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
 
       const { result } = renderHook(() => useFogCalculation({
         debounceDelay: 50,
-        fallbackStrategy: 'world'
+        fallbackStrategy: 'world',
+        useSpatialIndexing: false
       }));
 
       // Should initialize with error state
@@ -372,7 +376,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
       const { getRevealedAreas } = require('@/utils/database');
       
       const { result } = renderHook(() => useFogCalculation({
-        debounceDelay: 10 // Very short debounce
+        debounceDelay: 10, // Very short debounce
+        useSpatialIndexing: false
       }));
 
       // Simulate rapid errors
@@ -408,7 +413,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
 
       const { result } = renderHook(() => useFogCalculation({
         debounceDelay: 50,
-        fallbackStrategy: 'world'
+        fallbackStrategy: 'world',
+        useSpatialIndexing: false
       }));
 
       const { getRevealedAreas } = require('@/utils/database');
@@ -439,7 +445,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
       ]);
 
       const { result } = renderHook(() => useFogCalculation({
-        debounceDelay: 50
+        debounceDelay: 50,
+        useSpatialIndexing: false
       }));
 
       await act(async () => {
@@ -495,7 +502,8 @@ describe('Error Scenarios and Fallback Strategies', () => {
 
     test('should handle resource cleanup on component unmount', async () => {
       const { result, unmount } = renderHook(() => useFogCalculation({
-        debounceDelay: 100
+        debounceDelay: 100,
+        useSpatialIndexing: false
       }));
 
       // Start some operations

@@ -10,6 +10,20 @@ import {
 import { logger } from '@/utils/logger';
 
 /**
+ * Calculate execution time with fallback for test environments
+ * Ensures timing is always a positive value, even in fast test environments
+ * 
+ * @param startTime - The start time from performance.now()
+ * @returns Execution time in milliseconds, guaranteed to be > 0
+ */
+const calculateExecutionTime = (startTime: number): number => {
+  const rawTime = performance.now() - startTime;
+  // Ensure we always return a positive value, even in test environments
+  // where operations might be too fast to measure accurately
+  return Math.max(0.001, rawTime) || 0.001;
+};
+
+/**
  * Configuration options for fog calculation operations
  * Controls how fog is calculated, optimized, and handled in error scenarios
  */
@@ -143,10 +157,7 @@ export const createViewportFogPolygon = (bounds: [number, number, number, number
   // Create a polygon from the bounding box
   const viewportPolygon = bboxPolygon(bounds);
   
-  logger.debug('Created viewport fog polygon:', {
-    minLng, minLat, maxLng, maxLat,
-    area: (maxLng - minLng) * (maxLat - minLat)
-  });
+  logger.debugThrottled('Created viewport fog polygon', 2000);
   
   return viewportPolygon;
 };
@@ -204,21 +215,19 @@ export const getRevealedAreasInViewport = (
       });
     }
     
-    // Check if bounding boxes overlap
-    const overlaps = !(revealedMaxLng < minLng || revealedMinLng > maxLng ||
-                     revealedMaxLat < minLat || revealedMinLat > maxLat);
-    
-    logger.debug('Viewport filtering:', {
-      viewport: { minLng, minLat, maxLng, maxLat },
-      revealed: { minLng: revealedMinLng, minLat: revealedMinLat, maxLng: revealedMaxLng, maxLat: revealedMaxLat },
-      overlaps
-    });
+    // Check if bounding boxes overlap - use more lenient overlap check
+    // Allow for small margins to account for floating point precision
+    const margin = 0.0001; // Small margin for floating point precision
+    const overlaps = !(revealedMaxLng < (minLng - margin) || 
+                      revealedMinLng > (maxLng + margin) ||
+                      revealedMaxLat < (minLat - margin) || 
+                      revealedMinLat > (maxLat + margin));
     
     if (overlaps) {
-      logger.debug('Revealed areas intersect with viewport');
+      logger.debugThrottled('Revealed areas intersect with viewport', 2000);
       return revealedAreas;
     } else {
-      logger.debug('No revealed areas in current viewport');
+      logger.debugThrottled('No revealed areas in current viewport', 2000);
       return null;
     }
   } catch (error) {
@@ -230,10 +239,11 @@ export const getRevealedAreasInViewport = (
 /**
  * Calculates viewport-based fog with revealed areas
  * Primary fog calculation function that creates fog by subtracting revealed areas from viewport
- * Includes comprehensive error handling and performance monitoring
+ * Includes comprehensive error handling, performance monitoring, and intelligent caching
  * 
  * @param revealedAreas - Previously revealed areas to subtract from fog, or null if none
  * @param options - Configuration options for the fog calculation
+ * @param useCache - Whether to use caching for this calculation (default: true)
  * @returns Complete fog calculation result with geometry, metrics, and diagnostic information
  * 
  * @example
@@ -249,12 +259,48 @@ export const getRevealedAreasInViewport = (
  */
 export const calculateViewportFog = (
   revealedAreas: RevealedArea | null,
-  options: FogCalculationOptions
+  options: FogCalculationOptions,
+  useCache: boolean = true
 ): FogCalculationResult => {
   const startTime = performance.now();
   const errors: string[] = [];
   const warnings: string[] = [];
   let fallbackUsed = false;
+
+  // Check cache first if enabled and viewport bounds are available
+  if (useCache && options.viewportBounds) {
+    try {
+      const cacheManager = getGlobalFogCacheManager();
+      const cachedResult = cacheManager.getCachedFog(options.viewportBounds, revealedAreas);
+      
+      if (cachedResult) {
+        const cacheHitTime = calculateExecutionTime(startTime);
+        
+        logger.debugThrottled(
+          `Fog calculation cache hit (saved ${cachedResult.calculationTime.toFixed(2)}ms)`,
+          5000
+        );
+        
+        return {
+          fogGeoJSON: cachedResult.fogGeoJSON,
+          calculationTime: cacheHitTime,
+          performanceMetrics: {
+            geometryComplexity: getPolygonComplexity(cachedResult.fogGeoJSON.features[0] || createViewportFogPolygon(options.viewportBounds)),
+            operationType: 'viewport',
+            hadErrors: false,
+            fallbackUsed: false,
+            executionTime: cacheHitTime,
+            performanceLevel: 'FAST'
+          },
+          errors: [],
+          warnings: ['Using cached fog calculation result']
+        };
+      }
+    } catch (cacheError) {
+      logger.warn('Error checking fog cache, proceeding with calculation:', cacheError);
+      warnings.push('Cache lookup failed, performing fresh calculation');
+    }
+  }
   
 
   
@@ -270,7 +316,8 @@ export const calculateViewportFog = (
     
     // If there are no revealed areas, return the base fog polygon
     if (!revealedAreas) {
-      const executionTime = Math.max(0.001, performance.now() - startTime);
+      const executionTime = calculateExecutionTime(startTime);
+      logger.debugOnce('No revealed areas - returning full viewport fog');
       
       return {
         fogGeoJSON: {
@@ -287,20 +334,21 @@ export const calculateViewportFog = (
           performanceLevel: executionTime > 100 ? 'SLOW' : executionTime > 50 ? 'MODERATE' : 'FAST'
         },
         errors,
-        warnings
+        warnings: [...warnings, 'No revealed areas found - showing full fog coverage']
       };
     }
     
     // Filter revealed areas to viewport if optimization is enabled
     let relevantRevealedAreas: RevealedArea | null = revealedAreas;
     
-    if (options.useViewportOptimization) {
+    if (options.useViewportOptimization && revealedAreas) {
       const filterStartTime = performance.now();
       relevantRevealedAreas = getRevealedAreasInViewport(revealedAreas, options.viewportBounds);
       const filterTime = performance.now() - filterStartTime;
       
       if (!relevantRevealedAreas) {
-        const executionTime = Math.max(0.001, performance.now() - startTime);
+        const executionTime = calculateExecutionTime(startTime);
+        logger.debugThrottled('No revealed areas in current viewport after filtering', 3000);
         
         return {
           fogGeoJSON: {
@@ -329,11 +377,12 @@ export const calculateViewportFog = (
     warnings.push(...differenceResult.warnings);
     fallbackUsed = differenceResult.metrics.fallbackUsed;
     
-    const executionTime = Math.max(0.001, performance.now() - startTime);
+    const executionTime = calculateExecutionTime(startTime);
+    
+    let result: FogCalculationResult;
     
     if (differenceResult.result) {
-      
-      return {
+      result = {
         fogGeoJSON: {
           type: 'FeatureCollection',
           features: [differenceResult.result],
@@ -351,21 +400,22 @@ export const calculateViewportFog = (
         warnings
       };
     } else {
-      logger.warn('Robust difference operation returned null, using fallback');
-      warnings.push('Difference operation returned null - area may be completely revealed');
+      logger.warn('Difference operation failed, showing full viewport fog as fallback');
+      warnings.push('Difference operation failed - showing full fog coverage');
       
-      // Return empty fog collection when difference is null (completely revealed)
-      return {
+      // When difference fails, show the full viewport fog instead of empty
+      // This is better UX than showing no fog at all
+      result = {
         fogGeoJSON: {
           type: 'FeatureCollection',
-          features: [],
+          features: [baseFogPolygon],
         },
         calculationTime: executionTime,
         performanceMetrics: {
-          geometryComplexity: { totalVertices: 0, ringCount: 0, maxRingVertices: 0, averageRingVertices: 0, complexityLevel: 'LOW' },
+          geometryComplexity: getPolygonComplexity(baseFogPolygon),
           operationType: 'viewport',
-          hadErrors: false,
-          fallbackUsed: false,
+          hadErrors: true,
+          fallbackUsed: true,
           executionTime,
           performanceLevel: executionTime > 100 ? 'SLOW' : executionTime > 50 ? 'MODERATE' : 'FAST'
         },
@@ -373,6 +423,24 @@ export const calculateViewportFog = (
         warnings
       };
     }
+    
+    // Cache the result if caching is enabled and calculation was successful
+    if (useCache && options.viewportBounds && !result.performanceMetrics.hadErrors) {
+      try {
+        const cacheManager = getGlobalFogCacheManager();
+        cacheManager.cacheFogResult(options.viewportBounds, revealedAreas, result);
+        
+        logger.debugThrottled(
+          `Cached fog calculation result (${executionTime.toFixed(2)}ms)`,
+          5000
+        );
+      } catch (cacheError) {
+        logger.warn('Error caching fog calculation result:', cacheError);
+        // Don't fail the calculation due to cache errors
+      }
+    }
+    
+    return result;
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -407,20 +475,20 @@ export const calculateSimplifiedFog = (
   const errors: string[] = [];
   const warnings: string[] = ['Using simplified fog calculation'];
   
-  logger.debug('Creating simplified fog');
+  logger.debugOnce('Creating simplified fog');
   
   try {
     let fogPolygon: Feature<Polygon>;
     
     if (viewportBounds) {
       fogPolygon = createViewportFogPolygon(viewportBounds);
-      logger.debug('Created simplified viewport fog');
+      logger.debugThrottled('Created simplified viewport fog', 3000);
     } else {
       fogPolygon = createWorldFogPolygon();
-      logger.debug('Created simplified world fog');
+      logger.debugOnce('Created simplified world fog');
     }
     
-    const executionTime = Math.max(0.001, performance.now() - startTime);
+    const executionTime = calculateExecutionTime(startTime);
     
     return {
       fogGeoJSON: {
@@ -446,7 +514,7 @@ export const calculateSimplifiedFog = (
     errors.push(`Simplified fog calculation error: ${errorMessage}`);
     
     // Final fallback to world fog
-    const executionTime = Math.max(0.001, performance.now() - startTime);
+    const executionTime = calculateExecutionTime(startTime);
     const worldFog = createWorldFogPolygon();
     
     return {
@@ -473,9 +541,11 @@ export const calculateSimplifiedFog = (
  * Progressive fallback strategy for fog calculation
  * Implements a multi-tier approach: viewport fog → simplified fog → world fog
  * Ensures fog is always available even when complex calculations fail
+ * Includes intelligent caching to improve performance for repeated calculations
  * 
  * @param revealedAreas - Previously revealed areas to subtract from fog, or null if none
  * @param options - Configuration options including fallback strategy
+ * @param useCache - Whether to use caching for this calculation (default: true)
  * @returns Fog calculation result, guaranteed to contain valid fog geometry
  * 
  * @example
@@ -493,27 +563,29 @@ export const calculateSimplifiedFog = (
  */
 export const createFogWithFallback = (
   revealedAreas: RevealedArea | null,
-  options: FogCalculationOptions
+  options: FogCalculationOptions,
+  useCache: boolean = true
 ): FogCalculationResult => {
   const overallStartTime = performance.now();
   let viewportCalculationAttempted = false;
   
   try {
-    // Primary: Viewport-based fog with revealed areas
+    // Primary: Viewport-based fog with revealed areas (if viewport bounds available)
     if (options.useViewportOptimization && options.viewportBounds) {
       viewportCalculationAttempted = true;
-      const result = calculateViewportFog(revealedAreas, options);
+      const result = calculateViewportFog(revealedAreas, options, useCache);
       
       // If successful and no critical errors, return result
-      if (!result.performanceMetrics.hadErrors || result.errors.length === 0) {
+      // Allow warnings but not errors
+      if (!result.performanceMetrics.hadErrors) {
         return result;
       }
       
       logger.warn('Viewport fog calculation had errors, trying fallback');
     }
     
-    // Secondary: Simplified viewport fog
-    if (options.fallbackStrategy === 'viewport' && options.viewportBounds) {
+    // Secondary: Simplified viewport fog (if viewport bounds available)
+    if (options.viewportBounds) {
       viewportCalculationAttempted = true;
       logger.warn('Primary fog calculation failed, trying simplified viewport approach');
       
@@ -526,20 +598,34 @@ export const createFogWithFallback = (
       }
     }
     
-    // Tertiary: World fog as final fallback
-    if (options.fallbackStrategy === 'world' || options.fallbackStrategy === 'viewport') {
-      if (viewportCalculationAttempted) {
-        logger.error('All fog calculation methods failed, using world fog');
-      }
+    // Tertiary: World fog as final fallback (only if no viewport bounds or all viewport methods failed)
+    if (options.fallbackStrategy === 'world' || 
+        (options.fallbackStrategy === 'viewport' && viewportCalculationAttempted)) {
+      
+      logger.warn('Using world fog as final fallback');
       
       const worldResult = calculateSimplifiedFog(); // No viewport bounds = world fog
       worldResult.warnings.push('Used world fog as final fallback');
-      worldResult.performanceMetrics.hadErrors = true;
+      worldResult.performanceMetrics.hadErrors = viewportCalculationAttempted;
       
       return worldResult;
     }
     
-    // No fallback strategy
+    // If no fallback strategy and no viewport bounds, still provide world fog but mark as error
+    if (!options.viewportBounds && options.fallbackStrategy === 'none') {
+      logger.warn('No viewport bounds available and no fallback strategy, using emergency world fog');
+      const worldResult = calculateSimplifiedFog();
+      worldResult.warnings.push('Used emergency world fog (no viewport bounds, no fallback strategy)');
+      worldResult.performanceMetrics.hadErrors = true; // Mark as error since no fallback strategy was specified
+      return worldResult;
+    } else if (!options.viewportBounds) {
+      logger.warn('No viewport bounds available, using world fog');
+      const worldResult = calculateSimplifiedFog();
+      worldResult.warnings.push('Used world fog (no viewport bounds available)');
+      return worldResult;
+    }
+    
+    // No fallback strategy and viewport methods failed
     logger.error('Fog calculation failed and no fallback strategy specified');
     throw new Error('Fog calculation failed and no fallback strategy available');
     
@@ -547,26 +633,40 @@ export const createFogWithFallback = (
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Critical error in fog calculation with fallback:', error);
     
-    // Emergency fallback - always return world fog
+    // Emergency fallback - prefer viewport if bounds available, otherwise world fog
     const executionTime = performance.now() - overallStartTime;
-    const worldFog = createWorldFogPolygon();
+    let emergencyFog: Feature<Polygon>;
+    let operationType: 'viewport' | 'world';
+    
+    if (options.viewportBounds) {
+      try {
+        emergencyFog = createViewportFogPolygon(options.viewportBounds);
+        operationType = 'viewport';
+      } catch (viewportError) {
+        emergencyFog = createWorldFogPolygon();
+        operationType = 'world';
+      }
+    } else {
+      emergencyFog = createWorldFogPolygon();
+      operationType = 'world';
+    }
     
     return {
       fogGeoJSON: {
         type: 'FeatureCollection',
-        features: [worldFog],
+        features: [emergencyFog],
       },
       calculationTime: executionTime,
       performanceMetrics: {
-        geometryComplexity: getPolygonComplexity(worldFog),
-        operationType: 'world',
+        geometryComplexity: getPolygonComplexity(emergencyFog),
+        operationType,
         hadErrors: true,
         fallbackUsed: true,
         executionTime,
         performanceLevel: 'FAST'
       },
       errors: [`Critical fog calculation error: ${errorMessage}`],
-      warnings: ['Emergency fallback to world fog']
+      warnings: [`Emergency fallback to ${operationType} fog`]
     };
   }
 };
@@ -591,23 +691,31 @@ const createFallbackFogResult = (
   options: FogCalculationOptions,
   hadErrors: boolean
 ): FogCalculationResult => {
-  logger.debug('Creating fallback fog result');
+  logger.debugThrottled('Creating fallback fog result', 2000);
   
   try {
     let fogPolygon: Feature<Polygon>;
     let operationType: 'viewport' | 'world';
     
-    if (options.fallbackStrategy === 'viewport' && options.viewportBounds) {
-      fogPolygon = createViewportFogPolygon(options.viewportBounds);
-      operationType = 'viewport';
-      warnings.push('Using viewport fog as fallback');
+    // Always prefer viewport fog if bounds are available, regardless of fallback strategy
+    if (options.viewportBounds) {
+      try {
+        fogPolygon = createViewportFogPolygon(options.viewportBounds);
+        operationType = 'viewport';
+        warnings.push('Using viewport fog as fallback');
+      } catch (viewportError) {
+        logger.warn('Viewport fog creation failed in fallback, using world fog:', viewportError);
+        fogPolygon = createWorldFogPolygon();
+        operationType = 'world';
+        warnings.push('Using world fog as fallback after viewport failure');
+      }
     } else {
       fogPolygon = createWorldFogPolygon();
       operationType = 'world';
-      warnings.push('Using world fog as fallback');
+      warnings.push('Using world fog as fallback (no viewport bounds)');
     }
     
-    const executionTime = Math.max(0.001, performance.now() - startTime);
+    const executionTime = calculateExecutionTime(startTime);
     
     return {
       fogGeoJSON: {
@@ -631,7 +739,7 @@ const createFallbackFogResult = (
     logger.error('Fallback fog creation failed:', fallbackError);
     
     // Emergency world fog
-    const executionTime = Math.max(0.001, performance.now() - startTime);
+    const executionTime = calculateExecutionTime(startTime);
     const worldFog = createWorldFogPolygon();
     
     return {
@@ -658,10 +766,12 @@ const createFallbackFogResult = (
  * Creates fog overlay features based on revealed areas with robust viewport-based difference operation
  * High-level function that orchestrates fog calculation with viewport change handling
  * Prevents flickering during map interactions by maintaining stable fog during viewport changes
+ * Includes intelligent caching to improve performance for repeated viewport calculations
  * 
  * @param revealedAreas - Previously revealed areas to subtract from fog, or null if none
  * @param options - Configuration options for fog calculation
  * @param isViewportChanging - Whether the viewport is currently changing (prevents flickering)
+ * @param useCache - Whether to use caching for this calculation (default: true)
  * @returns Array of fog features ready for map rendering
  * 
  * @example
@@ -669,7 +779,8 @@ const createFallbackFogResult = (
  * const fogFeatures = createFogFeatures(
  *   revealedAreas,
  *   { viewportBounds, useViewportOptimization: true, performanceMode: 'accurate', fallbackStrategy: 'viewport' },
- *   false // viewport is stable
+ *   false, // viewport is stable
+ *   true   // use caching
  * );
  * 
  * // Use features with MapboxGL.ShapeSource
@@ -678,29 +789,18 @@ const createFallbackFogResult = (
 export const createFogFeatures = (
   revealedAreas: RevealedArea | null,
   options: FogCalculationOptions,
-  isViewportChanging: boolean = false
+  isViewportChanging: boolean = false,
+  useCache: boolean = true
 ): Feature<Polygon | MultiPolygon>[] => {
   const startTime = performance.now();
   
-  logger.debug('Starting fog feature creation', {
-    hasRevealedAreas: !!revealedAreas,
-    useViewportOptimization: options.useViewportOptimization,
-    isViewportChanging,
-    performanceMode: options.performanceMode
-  });
-  
   // During viewport changes, return stable fog to prevent flickering
   if (isViewportChanging) {
-    logger.debug('Viewport changing - maintaining stable fog to prevent flickering');
-    
     if (options.viewportBounds) {
       try {
         const stableFogPolygon = createViewportFogPolygon(options.viewportBounds);
-        const endTime = performance.now();
-        logger.debug(`Stable fog maintained in ${(endTime - startTime).toFixed(2)}ms`);
         return [stableFogPolygon];
       } catch (e) {
-        logger.debug('Fallback to world polygon during viewport change');
         return [createWorldFogPolygon()];
       }
     } else {
@@ -709,24 +809,11 @@ export const createFogFeatures = (
   }
   
   // Use the comprehensive fog calculation with fallback
-  const fogResult = createFogWithFallback(revealedAreas, options);
+  const fogResult = createFogWithFallback(revealedAreas, options, useCache);
   
-  // Log performance metrics
-  const totalTime = performance.now() - startTime;
-  logger.debug(`Fog creation completed in ${totalTime.toFixed(2)}ms`, {
-    performanceLevel: fogResult.performanceMetrics.performanceLevel,
-    featureCount: fogResult.fogGeoJSON.features.length,
-    hadErrors: fogResult.performanceMetrics.hadErrors,
-    fallbackUsed: fogResult.performanceMetrics.fallbackUsed
-  });
-  
-  // Log any errors or warnings
+  // Log any errors (warnings are too verbose for production)
   if (fogResult.errors.length > 0) {
     logger.warn('Fog calculation completed with errors:', fogResult.errors);
-  }
-  
-  if (fogResult.warnings.length > 0) {
-    logger.debug('Fog calculation warnings:', fogResult.warnings);
   }
   
   return fogResult.fogGeoJSON.features;

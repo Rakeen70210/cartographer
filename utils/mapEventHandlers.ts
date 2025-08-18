@@ -18,7 +18,7 @@ export const createViewportChangeHandler = (
   return async (): Promise<void> => {
     // Only process viewport changes if map is loaded
     if (!mapLoaded) {
-      logger.debug('Map not loaded, skipping viewport change');
+      logger.debugViewport('Map not loaded, skipping viewport change');
       return;
     }
     
@@ -42,7 +42,7 @@ export const createMapLoadHandler = (
   return (): void => {
     try {
       onMapLoad();
-      logger.info('Map loaded successfully');
+      logger.infoOnce('Map loaded successfully');
     } catch (error) {
       logger.error('Error in map load handler:', error);
     }
@@ -84,7 +84,7 @@ export const createCameraIdleHandler = (
   return (): void => {
     try {
       setViewportChanging(false);
-      logger.debug('Camera idle, viewport changes complete');
+      logger.debugViewport('Camera idle, viewport changes complete');
     } catch (error) {
       logger.error('Error in camera idle handler:', error);
     }
