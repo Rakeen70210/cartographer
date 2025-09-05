@@ -1,5 +1,4 @@
 import { render } from '@testing-library/react-native';
-import React from 'react';
 import StatisticsScreen from '../app/(tabs)/statistics';
 
 // Mock the useOfflineStatistics hook
@@ -654,6 +653,272 @@ describe('StatisticsScreen', () => {
       // Check that statistics cards are still rendered (proper separation)
       expect(getByTestId('distance-card')).toBeTruthy();
       expect(getByTestId('world-exploration-card')).toBeTruthy();
+    });
+  });
+
+  // Integration tests (from statistics.screen.integration.test.js)
+  describe('Integration Tests', () => {
+    const mockStatisticsData = {
+      totalDistance: { miles: 1234.5, kilometers: 1987.2 },
+      worldExploration: { percentage: 0.001, totalAreaKm2: 510072000, exploredAreaKm2: 5100.72 },
+      uniqueRegions: { countries: 3, states: 8, cities: 15 },
+      remainingRegions: { countries: 192, states: 3134, cities: 9985 },
+      hierarchicalBreakdown: [
+        {
+          id: 'us',
+          type: 'country',
+          name: 'United States',
+          code: 'US',
+          explorationPercentage: 2.5,
+          isExpanded: false,
+          children: [
+            {
+              id: 'us-ny',
+              type: 'state',
+              name: 'New York',
+              code: 'NY',
+              explorationPercentage: 15.2,
+              isExpanded: false,
+              children: []
+            }
+          ]
+        },
+        {
+          id: 'ca',
+          type: 'country',
+          name: 'Canada',
+          code: 'CA',
+          explorationPercentage: 0.8,
+          isExpanded: false,
+          children: []
+        }
+      ],
+      lastUpdated: Date.now()
+    };
+
+    const mockToggleHierarchyNode = jest.fn();
+    const mockRefreshData = jest.fn();
+    const mockClearCache = jest.fn();
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      
+      mockUseOfflineStatistics.mockReturnValue({
+        data: mockStatisticsData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        isOffline: false,
+        networkStatus: { isConnected: true, connectionType: 'wifi', lastOnlineTime: Date.now() },
+        lastUpdated: mockStatisticsData.lastUpdated,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode,
+        retryConnection: jest.fn()
+      });
+    });
+
+    test('displays correct statistics values in integration', () => {
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      // Check that data cards display correct values
+      expect(getByTestId('distance-card')).toBeTruthy();
+      expect(getByTestId('world-exploration-card')).toBeTruthy();
+      expect(getByTestId('countries-card')).toBeTruthy();
+    });
+
+    test('transitions from loading to loaded state', async () => {
+      // Start with loading state
+      mockUseOfflineStatistics.mockReturnValue({
+        data: null,
+        isLoading: true,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: null,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const { rerender, getByTestId } = render(<StatisticsScreen />);
+      expect(getByTestId('statistics-screen')).toBeTruthy();
+
+      // Update to loaded state
+      mockUseOfflineStatistics.mockReturnValue({
+        data: mockStatisticsData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: mockStatisticsData.lastUpdated,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      rerender(<StatisticsScreen />);
+      expect(getByTestId('statistics-screen')).toBeTruthy();
+    });
+
+    test('handles partial data gracefully', () => {
+      const partialData = {
+        ...mockStatisticsData,
+        hierarchicalBreakdown: [] // Empty hierarchy
+      };
+
+      mockUseOfflineStatistics.mockReturnValue({
+        data: partialData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: partialData.lastUpdated,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      // Basic stats should still show
+      expect(getByTestId('distance-card')).toBeTruthy();
+      
+      // Hierarchy should show empty state
+      expect(getByTestId('geographic-hierarchy')).toBeTruthy();
+    });
+
+    test('handles zero values correctly', () => {
+      const zeroData = {
+        ...mockStatisticsData,
+        totalDistance: { miles: 0, kilometers: 0 },
+        uniqueRegions: { countries: 0, states: 0, cities: 0 }
+      };
+
+      mockUseOfflineStatistics.mockReturnValue({
+        data: zeroData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: zeroData.lastUpdated,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      expect(getByTestId('distance-card')).toBeTruthy();
+      expect(getByTestId('countries-card')).toBeTruthy();
+    });
+
+    test('handles very large numbers correctly', () => {
+      const largeData = {
+        ...mockStatisticsData,
+        totalDistance: { miles: 1234567.89, kilometers: 1987654.32 },
+        uniqueRegions: { countries: 195, states: 3142, cities: 50000 }
+      };
+
+      mockUseOfflineStatistics.mockReturnValue({
+        data: largeData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: largeData.lastUpdated,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      expect(getByTestId('distance-card')).toBeTruthy();
+      expect(getByTestId('cities-card')).toBeTruthy();
+    });
+
+    test('renders efficiently with large hierarchy data', () => {
+      const largeHierarchy = Array.from({ length: 100 }, (_, i) => ({
+        id: `country-${i}`,
+        type: 'country',
+        name: `Country ${i}`,
+        explorationPercentage: Math.random() * 100,
+        isExpanded: false,
+        children: []
+      }));
+
+      const largeData = {
+        ...mockStatisticsData,
+        hierarchicalBreakdown: largeHierarchy
+      };
+
+      mockUseOfflineStatistics.mockReturnValue({
+        data: largeData,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: largeData.lastUpdated,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const startTime = Date.now();
+      const { getByTestId } = render(<StatisticsScreen />);
+      const endTime = Date.now();
+
+      expect(getByTestId('statistics-screen')).toBeTruthy();
+      expect(endTime - startTime).toBeLessThan(1000); // Should render quickly
+    });
+
+    test('handles undefined data gracefully', () => {
+      mockUseOfflineStatistics.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: null,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      expect(getByTestId('statistics-screen')).toBeTruthy();
+    });
+
+    test('handles null data gracefully', () => {
+      mockUseOfflineStatistics.mockReturnValue({
+        data: null,
+        isLoading: false,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: null,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const { getByTestId } = render(<StatisticsScreen />);
+
+      expect(getByTestId('statistics-screen')).toBeTruthy();
+    });
+
+    test('handles component unmounting during data loading', () => {
+      mockUseOfflineStatistics.mockReturnValue({
+        data: null,
+        isLoading: true,
+        isRefreshing: false,
+        error: null,
+        lastUpdated: null,
+        refreshData: mockRefreshData,
+        clearCache: mockClearCache,
+        toggleHierarchyNode: mockToggleHierarchyNode
+      });
+
+      const { getByTestId, unmount } = render(<StatisticsScreen />);
+
+      expect(getByTestId('statistics-screen')).toBeTruthy();
+      
+      // Should not throw error when unmounting during loading
+      expect(() => unmount()).not.toThrow();
     });
   });
 });

@@ -6,29 +6,29 @@
   - Fix React Native and Expo mock configurations in setup files
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [ ] 2. Analyze and Consolidate Redundant Test Files
-  - [ ] 2.1 Identify and consolidate HierarchicalView test files
+- [x] 2. Analyze and Consolidate Redundant Test Files
+  - [x] 2.1 Identify and consolidate HierarchicalView test files
     - Merge HierarchicalView.integration-final.test.js, HierarchicalView.integration-fixed-v2.test.js, HierarchicalView.integration-fixed.test.js, HierarchicalView.integration-simple.test.js, HierarchicalView.integration.test.js, HierarchicalView.minimal.test.js, HierarchicalView.simple-component.test.js, HierarchicalView.simple.test.js into the most comprehensive file
     - Delete redundant HierarchicalView test files after consolidation
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 2.2 Consolidate fog calculation test files
+  - [x] 2.2 Consolidate fog calculation test files
     - Merge fog-calculation.test.js and fogCalculation.test.js into a single comprehensive test file
     - Delete the redundant fog calculation test file
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 2.3 Consolidate distance calculator test files
+  - [x] 2.3 Consolidate distance calculator test files
     - Merge distanceCalculator.test.js and distanceCalculator.edge-cases.test.js into a single comprehensive test file
     - Delete the redundant distance calculator test file
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 2.4 Consolidate statistics test files
+  - [x] 2.4 Consolidate statistics test files
     - Merge statistics.performance.test.js and statistics.performance.simple.test.js into a single performance test file
     - Merge statistics.screen.test.js and statistics.screen.integration.test.js into a single screen test file
     - Delete redundant statistics test files after consolidation
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 2.5 Consolidate world exploration calculator test files
+  - [x] 2.5 Consolidate world exploration calculator test files
     - Merge worldExplorationCalculator.test.js and worldExplorationCalculator.edge-cases.test.js into a single comprehensive test file
     - Delete the redundant world exploration calculator test file
     - _Requirements: 2.1, 2.2_

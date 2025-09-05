@@ -504,4 +504,133 @@ describe('Statistics Performance Tests', () => {
       expect(processingTime).toBeLessThan(15000); // Should complete within 15 seconds (adjusted for concurrent processing)
     });
   });
+
+  // Additional simplified performance tests (from statistics.performance.simple.test.js)
+  describe('Simplified Performance Tests', () => {
+    test('should cancel debounced functions', () => {
+      let callCount = 0;
+      const testFunction = () => callCount++;
+
+      const debouncedFunction = statisticsDebouncer.debounce(
+        'test_cancel',
+        testFunction,
+        100
+      );
+
+      debouncedFunction();
+      statisticsDebouncer.cancel('test_cancel');
+
+      // Wait longer than debounce delay
+      return new Promise(resolve => {
+        setTimeout(() => {
+          expect(callCount).toBe(0);
+          resolve();
+        }, 150);
+      });
+    });
+
+    test('should handle task failures gracefully', async () => {
+      const successTask = () => Promise.resolve('success');
+      const failTask = () => Promise.reject(new Error('Task failed'));
+
+      const successPromise = backgroundProcessor.enqueue('success', successTask, 1);
+      const failPromise = backgroundProcessor.enqueue('fail', failTask, 1);
+
+      const successResult = await successPromise;
+      expect(successResult).toBe('success');
+
+      await expect(failPromise).rejects.toThrow('Task failed');
+    });
+
+    test('should provide queue status', async () => {
+      const longTask = () => new Promise(resolve => setTimeout(() => resolve('done'), 100));
+      
+      // Enqueue a task
+      const promise = backgroundProcessor.enqueue('long_task', longTask, 1);
+      
+      // Check status immediately
+      const status = backgroundProcessor.getStatus();
+      expect(typeof status.queueLength).toBe('number');
+      expect(typeof status.activeCount).toBe('number');
+      expect(typeof status.isProcessing).toBe('boolean');
+
+      await promise;
+    });
+
+    test('should handle batch cache operations', async () => {
+      const entries = [
+        { key: 'batch1', value: { data: 1 } },
+        { key: 'batch2', value: { data: 2 } },
+        { key: 'batch3', value: { data: 3 } }
+      ];
+
+      await statisticsCacheManager.batchSet(entries);
+
+      const results = await Promise.all([
+        statisticsCacheManager.get('batch1'),
+        statisticsCacheManager.get('batch2'),
+        statisticsCacheManager.get('batch3')
+      ]);
+
+      expect(results[0]).toEqual({ data: 1 });
+      expect(results[1]).toEqual({ data: 2 });
+      expect(results[2]).toEqual({ data: 3 });
+    });
+
+    test('should detect memory pressure', () => {
+      const isPressure = memoryManager.isMemoryPressure();
+      expect(typeof isPressure).toBe('boolean');
+    });
+
+    test('should handle empty datasets gracefully', async () => {
+      const emptyDataset = [];
+      const processor = async (chunk) => chunk.length;
+
+      const results = await DataChunker.processInChunks(
+        emptyDataset,
+        processor,
+        1000
+      );
+
+      expect(results).toHaveLength(0);
+    });
+
+    test('should reset metrics', () => {
+      performanceMonitor.recordCacheHit();
+      performanceMonitor.startTiming('test');
+      
+      performanceMonitor.reset();
+      
+      const hitRate = performanceMonitor.getCacheHitRate();
+      const metrics = performanceMonitor.getAllMetrics();
+      
+      expect(hitRate).toBe(0);
+      expect(metrics.size).toBe(0);
+    });
+
+    test('should handle cache errors gracefully', async () => {
+      // Test that cache manager handles errors gracefully by trying to get a non-existent key
+      const result = await statisticsCacheManager.get('non_existent_key');
+      expect(result).toBeNull();
+      
+      // Test that cache stats still work after errors
+      const stats = statisticsCacheManager.getCacheStats();
+      expect(typeof stats.hitRate).toBe('number');
+    });
+
+    test('should handle debouncer errors gracefully', () => {
+      const errorFunction = () => {
+        throw new Error('Function error');
+      };
+
+      const debouncedFunction = statisticsDebouncer.debounce(
+        'error_test',
+        errorFunction,
+        50
+      );
+
+      // Should not throw when calling debounced function
+      expect(() => debouncedFunction()).not.toThrow();
+    });
+  });
 });
