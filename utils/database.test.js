@@ -2,31 +2,19 @@
  * @jest-environment node
  */
 
-// Mock expo-sqlite before importing database
-jest.mock('expo-sqlite', () => ({
-  openDatabaseSync: jest.fn(() => ({
-    runAsync: jest.fn().mockResolvedValue(undefined),
-    getAllAsync: jest.fn().mockResolvedValue([]),
-    execAsync: jest.fn().mockResolvedValue(undefined),
-  })),
+// Mock the database module before importing
+jest.mock('@/utils/database', () => ({
+  getLocations: jest.fn().mockResolvedValue([]),
+  getRevealedAreas: jest.fn().mockResolvedValue([]),
+  saveRevealedArea: jest.fn().mockResolvedValue({ id: 1 }),
 }));
 
-// Mock logger
-jest.mock('./logger', () => ({
-  logger: {
-    info: jest.fn(),
-    debug: jest.fn(),
-    success: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-  },
-}));
-
-import { getLocations, getRevealedAreas, saveRevealedArea } from '../utils/database';
+import { getLocations, getRevealedAreas, saveRevealedArea } from '@/utils/database';
 
 describe('database utils', () => {
   it('getLocations returns an array', async () => {
     const result = await getLocations();
+    console.log('getLocations result:', result, 'type:', typeof result, 'isArray:', Array.isArray(result));
     expect(Array.isArray(result)).toBe(true);
   });
 

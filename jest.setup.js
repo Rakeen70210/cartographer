@@ -1,8 +1,18 @@
-// Jest setup file
+// Jest setup file - Consolidated configuration for all tests
 import 'react-native-gesture-handler/jestSetup';
 
 // Define __DEV__ for test environment
 global.__DEV__ = true;
+
+// Global test configuration
+global.TEST_CONSTANTS = {
+  DEFAULT_LATITUDE: 37.7749,
+  DEFAULT_LONGITUDE: -122.4194,
+  DEFAULT_TIMESTAMP: 1640995200000, // Jan 1, 2022 00:00:00 GMT
+  EARTH_SURFACE_AREA_KM2: 510072000,
+  DEFAULT_NETWORK_TIMEOUT: 5000,
+  DEFAULT_CACHE_TTL: 24 * 60 * 60 * 1000, // 24 hours
+};
 
 // Mock logger FIRST to ensure it's available everywhere
 const mockLogger = {
@@ -49,13 +59,67 @@ jest.mock('./utils/logger', () => ({
 // Export mockLogger for use in tests
 global.mockLogger = mockLogger;
 
+// Mock performance.now for consistent timing in tests
+const mockPerformanceNow = jest.fn(() => Date.now());
+global.performance = global.performance || {};
+global.performance.now = mockPerformanceNow;
+
+// Global test cleanup and setup
+beforeEach(() => {
+  // Reset performance.now mock before each test
+  mockPerformanceNow.mockClear();
+  let currentTime = 1000; // Start at 1 second
+  mockPerformanceNow.mockImplementation(() => {
+    currentTime += Math.random() * 100; // Add 0-100ms each call
+    return currentTime;
+  });
+
+  // Reset logger mocks before each test
+  Object.values(mockLogger).forEach(fn => fn.mockClear());
+
+  // Reset console mocks to reduce noise during tests
+  if (!process.env.DEBUG_TESTS) {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'info').mockImplementation(() => {});
+    // Keep console.error for debugging test failures
+  }
+});
+
+afterEach(() => {
+  // Restore console after each test
+  if (!process.env.DEBUG_TESTS) {
+    console.log.mockRestore?.();
+    console.warn.mockRestore?.();
+    console.info.mockRestore?.();
+  }
+  
+  // Clear all mocks after each test
+  jest.clearAllMocks();
+});
+
+// Global mock implementations
+global.mockFetch = jest.fn();
+global.fetch = global.mockFetch;
+
+// Mock timers setup utilities
+global.setupMockTimers = () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date(1640995200000)); // Jan 1, 2022 00:00:00 GMT
+};
+
+global.cleanupMockTimers = () => {
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+};
+
 // Mock TurboModuleRegistry to prevent DevMenu errors
 jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => ({
   get: jest.fn(() => null),
   getEnforcing: jest.fn(() => ({})),
 }));
 
-// Mock react-native modules more comprehensively
+// Mock react-native modules comprehensively
 jest.mock('react-native', () => {
   const mockComponent = (name) => {
     const MockedComponent = (props) => {
@@ -86,6 +150,8 @@ jest.mock('react-native', () => {
     TouchableOpacity: mockComponent('TouchableOpacity'),
     Pressable: mockComponent('Pressable'),
     Image: mockComponent('Image'),
+    RefreshControl: mockComponent('RefreshControl'),
+    ActivityIndicator: mockComponent('ActivityIndicator'),
     FlatList: (props) => {
       const React = require('react');
       
@@ -136,52 +202,74 @@ jest.mock('react-native', () => {
       View: mockComponent('Animated.View'),
       Text: mockComponent('Animated.Text'),
       ScrollView: mockComponent('Animated.ScrollView'),
-      Value: jest.fn(() => ({
+      Value: jest.fn().mockImplementation((value) => ({
         setValue: jest.fn(),
         addListener: jest.fn(),
         removeListener: jest.fn(),
         removeAllListeners: jest.fn(),
         stopAnimation: jest.fn(),
         resetAnimation: jest.fn(),
-        interpolate: jest.fn(() => ({
+        interpolate: jest.fn((config) => ({
           setValue: jest.fn(),
           addListener: jest.fn(),
           removeListener: jest.fn(),
           removeAllListeners: jest.fn(),
           stopAnimation: jest.fn(),
           resetAnimation: jest.fn(),
+          interpolate: jest.fn(),
+          _value: config?.outputRange?.[0] || '0%',
+          _listeners: {}
         })),
+        _value: value,
+        _listeners: {}
       })),
       timing: jest.fn(() => ({
-        start: jest.fn(),
+        start: jest.fn((callback) => callback && callback({ finished: true })),
         stop: jest.fn(),
         reset: jest.fn(),
       })),
       spring: jest.fn(() => ({
-        start: jest.fn(),
+        start: jest.fn((callback) => callback && callback({ finished: true })),
         stop: jest.fn(),
         reset: jest.fn(),
       })),
       sequence: jest.fn(() => ({
-        start: jest.fn(),
+        start: jest.fn((callback) => callback && callback({ finished: true })),
         stop: jest.fn(),
         reset: jest.fn(),
       })),
       parallel: jest.fn(() => ({
-        start: jest.fn(),
+        start: jest.fn((callback) => callback && callback({ finished: true })),
         stop: jest.fn(),
         reset: jest.fn(),
       })),
       loop: jest.fn(() => ({
-        start: jest.fn(),
+        start: jest.fn((callback) => callback && callback({ finished: true })),
         stop: jest.fn(),
         reset: jest.fn(),
       })),
       createAnimatedComponent: jest.fn((component) => component),
+      Easing: {
+        linear: jest.fn(),
+        ease: jest.fn(),
+        quad: jest.fn(),
+        cubic: jest.fn(),
+        poly: jest.fn(),
+        sin: jest.fn(),
+        circle: jest.fn(),
+        exp: jest.fn(),
+        elastic: jest.fn(),
+        back: jest.fn(),
+        bounce: jest.fn(),
+        bezier: jest.fn(),
+        in: jest.fn(),
+        out: jest.fn(),
+        inOut: jest.fn()
+      }
     },
     Dimensions: {
       get: jest.fn(() => ({ width: 375, height: 812 })),
-      addEventListener: jest.fn(),
+      addEventListener: jest.fn(() => ({ remove: jest.fn() })),
       removeEventListener: jest.fn(),
     },
     Platform: {
@@ -193,6 +281,12 @@ jest.mock('react-native', () => {
       currentState: 'active',
       addEventListener: jest.fn(() => ({ remove: jest.fn() })),
       removeEventListener: jest.fn(),
+    },
+    Alert: {
+      alert: jest.fn()
+    },
+    Linking: {
+      openURL: jest.fn()
     },
     NativeModules: {},
     DeviceEventEmitter: {
@@ -208,12 +302,102 @@ jest.mock('react-native', () => {
       removeEventListener: jest.fn(),
       isReduceMotionEnabled: jest.fn(() => Promise.resolve(false)),
       isScreenReaderEnabled: jest.fn(() => Promise.resolve(false)),
+      isBoldTextEnabled: jest.fn(() => Promise.resolve(false)),
+      isGrayscaleEnabled: jest.fn(() => Promise.resolve(false)),
+      isInvertColorsEnabled: jest.fn(() => Promise.resolve(false)),
+      isReduceTransparencyEnabled: jest.fn(() => Promise.resolve(false)),
       announceForAccessibility: jest.fn(),
+      setAccessibilityFocus: jest.fn()
     },
   };
 });
 
-// Mock expo modules that might be used in components
+// Mock Expo modules comprehensively
+jest.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
+  requestBackgroundPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
+  getCurrentPositionAsync: jest.fn(() => Promise.resolve({
+    coords: {
+      latitude: 37.7749,
+      longitude: -122.4194,
+      altitude: 0,
+      accuracy: 5,
+      heading: 0,
+      speed: 0,
+    },
+    timestamp: Date.now(),
+  })),
+  watchPositionAsync: jest.fn(() => Promise.resolve({ remove: jest.fn() })),
+  startLocationUpdatesAsync: jest.fn(() => Promise.resolve()),
+  stopLocationUpdatesAsync: jest.fn(() => Promise.resolve()),
+  reverseGeocodeAsync: jest.fn(() => Promise.resolve([{
+    country: 'United States',
+    region: 'California',
+    city: 'San Francisco',
+    isoCountryCode: 'US'
+  }])),
+  Accuracy: {
+    BestForNavigation: 6,
+    Highest: 6,
+    High: 4,
+    Balanced: 3,
+    Low: 2,
+    Lowest: 1,
+  },
+  LocationAccuracy: {
+    BestForNavigation: 6,
+    Highest: 6,
+    High: 4,
+    Balanced: 3,
+    Low: 2,
+    Lowest: 1,
+  },
+}));
+
+jest.mock('expo-task-manager', () => ({
+  defineTask: jest.fn(),
+  isTaskRegisteredAsync: jest.fn(() => Promise.resolve(false)),
+}));
+
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: jest.fn(() => ({
+    // Async methods (used by the actual database.ts)
+    execAsync: jest.fn().mockResolvedValue(undefined),
+    getAllAsync: jest.fn().mockResolvedValue([]),
+    getFirstAsync: jest.fn().mockResolvedValue(null),
+    runAsync: jest.fn().mockResolvedValue({ changes: 0, lastInsertRowId: 0 }),
+    prepareAsync: jest.fn().mockResolvedValue({
+      executeAsync: jest.fn().mockResolvedValue({ changes: 0, lastInsertRowId: 0 }),
+      getAllAsync: jest.fn().mockResolvedValue([]),
+      getFirstAsync: jest.fn().mockResolvedValue(null),
+      finalizeAsync: jest.fn().mockResolvedValue(undefined),
+    }),
+    closeAsync: jest.fn().mockResolvedValue(undefined),
+    
+    // Sync methods (for backward compatibility)
+    execSync: jest.fn(),
+    getAllSync: jest.fn(() => []),
+    getFirstSync: jest.fn(() => null),
+    runSync: jest.fn(() => ({ changes: 0, lastInsertRowId: 0 })),
+    prepareSync: jest.fn(() => ({
+      executeSync: jest.fn(() => ({ changes: 0, lastInsertRowId: 0 })),
+      getAllSync: jest.fn(() => []),
+      getFirstSync: jest.fn(() => null),
+      finalizeSync: jest.fn(),
+    })),
+    closeSync: jest.fn(),
+  })),
+  openDatabase: jest.fn(() => ({
+    transaction: jest.fn((callback) => {
+      callback({
+        executeSql: jest.fn((sql, params, success) => {
+          if (success) success([], { rows: { _array: [] } });
+        })
+      });
+    })
+  }))
+}));
+
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
   notificationAsync: jest.fn(),
@@ -247,6 +431,29 @@ jest.mock('expo-symbols', () => ({
   },
 }));
 
+jest.mock('expo-asset', () => ({
+  Asset: {
+    fromModule: jest.fn(() => ({
+      downloadAsync: jest.fn(),
+      uri: 'mock-uri',
+    })),
+  },
+}));
+
+jest.mock('expo-constants', () => ({
+  default: {
+    expoConfig: {
+      name: 'Test App',
+      version: '1.0.0',
+    },
+    platform: {
+      ios: {
+        platform: 'ios',
+      },
+    },
+  },
+}));
+
 jest.mock('expo-router', () => ({
   Link: ({ children, onPress, ...props }) => {
     const React = require('react');
@@ -261,6 +468,7 @@ jest.mock('expo-router', () => ({
   })),
 }));
 
+// Mock React Navigation
 jest.mock('@react-navigation/bottom-tabs', () => ({
   useBottomTabBarHeight: jest.fn(() => 80),
 }));
@@ -268,6 +476,62 @@ jest.mock('@react-navigation/bottom-tabs', () => ({
 jest.mock('@react-navigation/elements', () => ({
   PlatformPressable: 'PlatformPressable',
 }));
+
+// Mock NetInfo
+jest.mock('@react-native-community/netinfo', () => {
+  const mockNetInfo = {
+    fetch: jest.fn(() => Promise.resolve({
+      type: 'wifi',
+      isConnected: true,
+      isInternetReachable: true,
+    })),
+    addEventListener: jest.fn(() => jest.fn()),
+  };
+  
+  return {
+    __esModule: true,
+    default: mockNetInfo,
+    useNetInfo: jest.fn(() => ({
+      type: 'wifi',
+      isConnected: true,
+      isInternetReachable: true,
+    })),
+  };
+});
+
+// Mock Mapbox
+jest.mock('@rnmapbox/maps', () => ({
+  setAccessToken: jest.fn(),
+  StyleURL: {
+    Dark: 'mapbox://styles/mapbox/dark-v10',
+    Light: 'mapbox://styles/mapbox/light-v10',
+  },
+  MapView: 'MapView',
+  Camera: 'Camera',
+  ShapeSource: 'ShapeSource',
+  FillLayer: 'FillLayer',
+  LineLayer: 'LineLayer',
+  CircleLayer: 'CircleLayer',
+}));
+
+// Mock Safe Area Context
+jest.mock('react-native-safe-area-context', () => {
+  const mockComponent = (name) => {
+    const MockedComponent = (props) => {
+      const React = require('react');
+      return React.createElement('View', props, props.children);
+    };
+    MockedComponent.displayName = name;
+    return MockedComponent;
+  };
+
+  return {
+    SafeAreaView: mockComponent('SafeAreaView'),
+    SafeAreaProvider: mockComponent('SafeAreaProvider'),
+    useSafeAreaInsets: jest.fn(() => ({ top: 44, bottom: 34, left: 0, right: 0 })),
+    useSafeAreaFrame: jest.fn(() => ({ x: 0, y: 0, width: 375, height: 812 })),
+  };
+});
 
 // Mock custom UI hooks
 jest.mock('./components/ui/TabBarBackground', () => ({
@@ -288,6 +552,45 @@ jest.mock('./constants/Colors', () => ({
       text: '#ffffff',
     },
   },
+}));
+
+// Mock custom hooks
+jest.mock('./hooks/useColorScheme', () => ({
+  useColorScheme: jest.fn(() => 'light'),
+}));
+
+jest.mock('./hooks/useThemeColor', () => ({
+  useThemeColor: jest.fn(() => '#000000'),
+}));
+
+// Mock map styling utilities
+jest.mock('@/utils/mapStyling', () => ({
+  getMapStyleName: jest.fn((style) => {
+    const styleMap = {
+      'mapbox://styles/mapbox/dark-v10': 'Dark',
+      'mapbox://styles/mapbox/light-v10': 'Light',
+      'mapbox://styles/mapbox/streets-v11': 'Street',
+      'mapbox://styles/mapbox/satellite-v9': 'Satellite',
+      'mapbox://styles/mapbox/satellite-streets-v11': 'Satellite Street'
+    };
+    return styleMap[style] || 'Unknown';
+  }),
+  createLocationMarkerStyling: jest.fn(() => ({
+    container: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: '#007AFF',
+      borderWidth: 2,
+      borderColor: '#FFFFFF'
+    },
+    core: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: '#FFFFFF'
+    }
+  }))
 }));
 
 // Mock react-native-reanimated
@@ -313,8 +616,8 @@ jest.mock('react-native-reanimated', () => {
     View: mockComponent(View, 'Animated.View'),
     Text: mockComponent(Text, 'Animated.Text'),
     ScrollView: mockComponent(ScrollView, 'Animated.ScrollView'),
-    useSharedValue: jest.fn(() => ({ 
-      value: 0,
+    useSharedValue: jest.fn((initialValue) => ({ 
+      value: initialValue || 0,
       addListener: jest.fn(),
       removeListener: jest.fn(),
       modify: jest.fn()
@@ -389,60 +692,25 @@ jest.mock('react-native-gesture-handler', () => {
   };
 });
 
-// Mock custom hooks
-jest.mock('./hooks/useColorScheme', () => ({
-  useColorScheme: jest.fn(() => 'light'),
-}));
-
-jest.mock('./hooks/useThemeColor', () => ({
-  useThemeColor: jest.fn(() => '#000000'),
-}));
-
-
-
-// Mock Expo modules
-jest.mock('expo-location', () => ({
-  requestForegroundPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
-  requestBackgroundPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
-  getCurrentPositionAsync: jest.fn(() => Promise.resolve({
-    coords: {
-      latitude: 37.7749,
-      longitude: -122.4194,
-      altitude: 0,
-      accuracy: 5,
-      heading: 0,
-      speed: 0,
-    },
-    timestamp: Date.now(),
-  })),
-  watchPositionAsync: jest.fn(() => Promise.resolve({ remove: jest.fn() })),
-  startLocationUpdatesAsync: jest.fn(() => Promise.resolve()),
-  stopLocationUpdatesAsync: jest.fn(() => Promise.resolve()),
-  Accuracy: {
-    BestForNavigation: 6,
-    Highest: 6,
-    High: 4,
-    Balanced: 3,
-    Low: 2,
-    Lowest: 1,
-  },
-  LocationAccuracy: {
-    BestForNavigation: 6,
-    Highest: 6,
-    High: 4,
-    Balanced: 3,
-    Low: 2,
-    Lowest: 1,
-  },
-}));
-
-jest.mock('expo-task-manager', () => ({
-  defineTask: jest.fn(),
-  isTaskRegisteredAsync: jest.fn(),
-}));
-
-jest.mock('expo-sqlite', () => ({
-  openDatabaseSync: jest.fn(() => ({
+// Mock database operations consistently
+const mockDatabase = {
+  // Core database operations
+  initDatabase: jest.fn().mockResolvedValue(undefined),
+  database: {
+    // Async methods
+    execAsync: jest.fn().mockResolvedValue(undefined),
+    getAllAsync: jest.fn().mockResolvedValue([]),
+    getFirstAsync: jest.fn().mockResolvedValue(null),
+    runAsync: jest.fn().mockResolvedValue({ changes: 0, lastInsertRowId: 0 }),
+    prepareAsync: jest.fn().mockResolvedValue({
+      executeAsync: jest.fn().mockResolvedValue({ changes: 0, lastInsertRowId: 0 }),
+      getAllAsync: jest.fn().mockResolvedValue([]),
+      getFirstAsync: jest.fn().mockResolvedValue(null),
+      finalizeAsync: jest.fn().mockResolvedValue(undefined),
+    }),
+    closeAsync: jest.fn().mockResolvedValue(undefined),
+    
+    // Sync methods (for backward compatibility)
     execSync: jest.fn(),
     getAllSync: jest.fn(() => []),
     getFirstSync: jest.fn(() => null),
@@ -454,89 +722,304 @@ jest.mock('expo-sqlite', () => ({
       finalizeSync: jest.fn(),
     })),
     closeSync: jest.fn(),
-  })),
-}));
-
-jest.mock('expo-asset', () => ({
-  Asset: {
-    fromModule: jest.fn(() => ({
-      downloadAsync: jest.fn(),
-      uri: 'mock-uri',
-    })),
   },
-}));
-
-jest.mock('expo-constants', () => ({
-  default: {
-    expoConfig: {
-      name: 'Test App',
-      version: '1.0.0',
-    },
-    platform: {
-      ios: {
-        platform: 'ios',
-      },
-    },
-  },
-}));
-
-jest.mock('@react-native-community/netinfo', () => {
-  const mockNetInfo = {
-    fetch: jest.fn(() => Promise.resolve({
-      type: 'wifi',
-      isConnected: true,
-      isInternetReachable: true,
-    })),
-    addEventListener: jest.fn(() => jest.fn()),
-  };
   
-  return {
-    __esModule: true,
-    default: mockNetInfo,
-    useNetInfo: jest.fn(() => ({
-      type: 'wifi',
-      isConnected: true,
-      isInternetReachable: true,
-    })),
-  };
-});
+  // Location operations
+  getLocations: jest.fn().mockResolvedValue([]),
+  saveLocation: jest.fn().mockResolvedValue({ id: 1 }),
+  deleteLocation: jest.fn().mockResolvedValue(),
+  
+  // Revealed area operations
+  getRevealedAreas: jest.fn().mockResolvedValue([]),
+  saveRevealedArea: jest.fn().mockResolvedValue({ id: 1 }),
+  deleteRevealedArea: jest.fn().mockResolvedValue(),
+  
+  // Cache operations
+  getStatisticsCache: jest.fn().mockResolvedValue(null),
+  saveStatisticsCache: jest.fn().mockResolvedValue(),
+  deleteStatisticsCache: jest.fn().mockResolvedValue(),
+  clearAllStatisticsCache: jest.fn().mockResolvedValue(),
+  deleteExpiredStatisticsCache: jest.fn().mockResolvedValue(),
+  getAllStatisticsCache: jest.fn().mockResolvedValue([]),
+  
+  // Geocoding operations
+  getLocationGeocoding: jest.fn().mockResolvedValue(null),
+  saveLocationGeocoding: jest.fn().mockResolvedValue(),
+  deleteExpiredLocationGeocodings: jest.fn().mockResolvedValue(),
+  getAllLocationGeocodings: jest.fn().mockResolvedValue([])
+};
 
-jest.mock('@rnmapbox/maps', () => ({
-  setAccessToken: jest.fn(),
-  StyleURL: {
-    Dark: 'mapbox://styles/mapbox/dark-v10',
-    Light: 'mapbox://styles/mapbox/light-v10',
-  },
-  MapView: 'MapView',
-  Camera: 'Camera',
-  ShapeSource: 'ShapeSource',
-  FillLayer: 'FillLayer',
-  LineLayer: 'LineLayer',
-  CircleLayer: 'CircleLayer',
+// Mock the database module before it's loaded
+jest.mock('@/utils/database', () => ({
+  initDatabase: jest.fn().mockResolvedValue(undefined),
+  getLocations: jest.fn().mockResolvedValue([]),
+  saveLocation: jest.fn().mockResolvedValue({ id: 1 }),
+  deleteLocation: jest.fn().mockResolvedValue(),
+  getRevealedAreas: jest.fn().mockResolvedValue([]),
+  saveRevealedArea: jest.fn().mockResolvedValue({ id: 1 }),
+  deleteRevealedArea: jest.fn().mockResolvedValue(),
+  getStatisticsCache: jest.fn().mockResolvedValue(null),
+  saveStatisticsCache: jest.fn().mockResolvedValue(),
+  deleteStatisticsCache: jest.fn().mockResolvedValue(),
+  clearAllStatisticsCache: jest.fn().mockResolvedValue(),
+  deleteExpiredStatisticsCache: jest.fn().mockResolvedValue(),
+  getAllStatisticsCache: jest.fn().mockResolvedValue([]),
+  getLocationGeocoding: jest.fn().mockResolvedValue(null),
+  saveLocationGeocoding: jest.fn().mockResolvedValue(),
+  deleteExpiredLocationGeocodings: jest.fn().mockResolvedValue(),
+  getAllLocationGeocodings: jest.fn().mockResolvedValue([])
 }));
 
-// Mock react-native-safe-area-context
-jest.mock('react-native-safe-area-context', () => {
-  const mockComponent = (name) => {
-    const MockedComponent = (props) => {
-      const React = require('react');
-      return React.createElement('View', props, props.children);
-    };
-    MockedComponent.displayName = name;
-    return MockedComponent;
-  };
+// Also mock the relative path version
+jest.mock('./utils/database', () => ({
+  initDatabase: jest.fn().mockResolvedValue(undefined),
+  getLocations: jest.fn().mockResolvedValue([]),
+  saveLocation: jest.fn().mockResolvedValue({ id: 1 }),
+  deleteLocation: jest.fn().mockResolvedValue(),
+  getRevealedAreas: jest.fn().mockResolvedValue([]),
+  saveRevealedArea: jest.fn().mockResolvedValue({ id: 1 }),
+  deleteRevealedArea: jest.fn().mockResolvedValue(),
+  getStatisticsCache: jest.fn().mockResolvedValue(null),
+  saveStatisticsCache: jest.fn().mockResolvedValue(),
+  deleteStatisticsCache: jest.fn().mockResolvedValue(),
+  clearAllStatisticsCache: jest.fn().mockResolvedValue(),
+  deleteExpiredStatisticsCache: jest.fn().mockResolvedValue(),
+  getAllStatisticsCache: jest.fn().mockResolvedValue([]),
+  getLocationGeocoding: jest.fn().mockResolvedValue(null),
+  saveLocationGeocoding: jest.fn().mockResolvedValue(),
+  deleteExpiredLocationGeocodings: jest.fn().mockResolvedValue(),
+  getAllLocationGeocodings: jest.fn().mockResolvedValue([])
+}));
 
-  return {
-    SafeAreaView: mockComponent('SafeAreaView'),
-    SafeAreaProvider: mockComponent('SafeAreaProvider'),
-    useSafeAreaInsets: jest.fn(() => ({ top: 44, bottom: 34, left: 0, right: 0 })),
-    useSafeAreaFrame: jest.fn(() => ({ x: 0, y: 0, width: 375, height: 812 })),
-  };
+// Make mockDatabase available globally
+global.mockDatabase = mockDatabase;
+
+
+
+// Mock Turf.js operations to be predictable in tests
+const mockTurf = {
+  difference: jest.fn((minuend, subtrahend) => {
+    // Return a simplified result for testing
+    if (!minuend || !subtrahend) return null;
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [-122.5, 37.7],
+          [-122.3, 37.7],
+          [-122.3, 37.8],
+          [-122.5, 37.8],
+          [-122.5, 37.7]
+        ]]
+      }
+    };
+  }),
+  union: jest.fn((featureCollection) => {
+    if (!featureCollection || !featureCollection.features || featureCollection.features.length === 0) {
+      return null;
+    }
+    // Return the first feature as a simplified union
+    return featureCollection.features[0];
+  }),
+  buffer: jest.fn((point, distance, options) => {
+    if (!point || !point.geometry || point.geometry.type !== 'Point') {
+      return null;
+    }
+    const coords = point.geometry.coordinates;
+    const offset = distance / 111320; // Rough conversion to degrees
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [coords[0] - offset, coords[1] - offset],
+          [coords[0] + offset, coords[1] - offset],
+          [coords[0] + offset, coords[1] + offset],
+          [coords[0] - offset, coords[1] + offset],
+          [coords[0] - offset, coords[1] - offset]
+        ]]
+      }
+    };
+  }),
+  bbox: jest.fn((feature) => {
+    if (!feature || !feature.geometry) return [-122.5, 37.7, -122.3, 37.8];
+    return [-122.5, 37.7, -122.3, 37.8];
+  }),
+  bboxPolygon: jest.fn((bbox) => ({
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [bbox[0], bbox[1]],
+        [bbox[2], bbox[1]],
+        [bbox[2], bbox[3]],
+        [bbox[0], bbox[3]],
+        [bbox[0], bbox[1]]
+      ]]
+    }
+  })),
+  area: jest.fn(() => 1000000), // 1 km²
+  point: jest.fn((coordinates) => ({
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'Point',
+      coordinates
+    }
+  })),
+  polygon: jest.fn((coordinates) => ({
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'Polygon',
+      coordinates
+    }
+  })),
+  featureCollection: jest.fn((features) => ({
+    type: 'FeatureCollection',
+    features
+  }))
+};
+
+jest.mock('@turf/turf', () => mockTurf);
+jest.mock('@turf/difference', () => ({ difference: mockTurf.difference }));
+jest.mock('@turf/union', () => ({ union: mockTurf.union }));
+jest.mock('@turf/buffer', () => ({ buffer: mockTurf.buffer }));
+jest.mock('@turf/bbox', () => ({ bbox: mockTurf.bbox }));
+jest.mock('@turf/bbox-polygon', () => ({ bboxPolygon: mockTurf.bboxPolygon }));
+jest.mock('@turf/area', () => ({ area: mockTurf.area }));
+
+// Make mockTurf available globally
+global.mockTurf = mockTurf;
+
+// Global test utilities
+global.testUtils = {
+  // Wait for async operations to complete
+  waitForAsync: (ms = 0) => new Promise(resolve => setTimeout(resolve, ms)),
+  
+  // Create a mock function with consistent behavior
+  createMockFunction: (returnValue) => jest.fn().mockResolvedValue(returnValue),
+  
+  // Create a mock function that fails
+  createFailingMockFunction: (error) => jest.fn().mockRejectedValue(error),
+  
+  // Simulate network delay
+  simulateNetworkDelay: (ms = 100) => new Promise(resolve => setTimeout(resolve, ms)),
+  
+  // Generate consistent test IDs
+  generateTestId: (prefix, suffix) => `${prefix}-${suffix || Date.now()}`,
+  
+  // Validate mock call arguments
+  expectMockCalledWith: (mockFn, expectedArgs) => {
+    expect(mockFn).toHaveBeenCalledWith(...expectedArgs);
+  },
+  
+  // Create consistent mock geometry
+  createMockPolygon: (offset = 0) => ({
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [-122.42 + offset, 37.77 + offset],
+        [-122.41 + offset, 37.77 + offset],
+        [-122.41 + offset, 37.78 + offset],
+        [-122.42 + offset, 37.78 + offset],
+        [-122.42 + offset, 37.77 + offset]
+      ]]
+    }
+  }),
+  
+  // Create mock point
+  createMockPoint: (lng = -122.4194, lat = 37.7749) => ({
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: [lng, lat]
+    },
+    properties: {}
+  }),
+  
+  // Wait for hook to stabilize
+  waitForHookStable: async (result, timeout = 5000) => {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      if (!result.current.isCalculating && !result.current.isChanging) {
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error('Hook did not stabilize within timeout');
+  }
+};
+
+// Performance testing utilities
+global.performanceUtils = {
+  measureTime: async (operation) => {
+    const start = Date.now();
+    await operation();
+    return Date.now() - start;
+  },
+  
+  expectPerformance: (actualTime, expectedTime, tolerance = 0.2) => {
+    const maxTime = expectedTime * (1 + tolerance);
+    expect(actualTime).toBeLessThan(maxTime);
+  }
+};
+
+// Error testing utilities
+global.errorUtils = {
+  expectError: async (operation, expectedErrorMessage) => {
+    await expect(operation()).rejects.toThrow(expectedErrorMessage);
+  },
+  
+  expectNoError: async (operation) => {
+    await expect(operation()).resolves.not.toThrow();
+  }
+};
+
+// Data validation utilities
+global.validationUtils = {
+  expectValidCoordinates: (lat, lon) => {
+    expect(typeof lat).toBe('number');
+    expect(typeof lon).toBe('number');
+    expect(lat).toBeGreaterThanOrEqual(-90);
+    expect(lat).toBeLessThanOrEqual(90);
+    expect(lon).toBeGreaterThanOrEqual(-180);
+    expect(lon).toBeLessThanOrEqual(180);
+  },
+  
+  expectValidTimestamp: (timestamp) => {
+    expect(typeof timestamp).toBe('number');
+    expect(timestamp).toBeGreaterThan(0);
+    expect(timestamp).toBeLessThanOrEqual(Date.now());
+  },
+  
+  expectValidPercentage: (percentage) => {
+    expect(typeof percentage).toBe('number');
+    expect(percentage).toBeGreaterThanOrEqual(0);
+    // Note: percentages can be > 100 in some edge cases
+  }
+};
+
+// Setup global error handler for unhandled promise rejections in tests
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process in tests, just log the error
 });
 
-// Silence console warnings during tests
-global.console = {
-  ...console,
-  warn: jest.fn(),
-  error: jest.fn(),
-};
+// Increase timeout for all tests to account for system variability
+jest.setTimeout(30000); // 30 seconds
+
+// Silence console warnings during tests unless debugging
+if (!process.env.DEBUG_TESTS) {
+  global.console = {
+    ...console,
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
+}

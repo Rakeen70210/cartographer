@@ -3,8 +3,8 @@
  * Extends the main Jest setup with testing-specific configurations
  */
 
-// Import main setup
-import './jestSetup.js';
+// Import main setup from root
+import '../../jest.setup.js';
 
 // Mock performance.now for consistent timing in tests
 const mockPerformanceNow = jest.fn(() => Date.now());
