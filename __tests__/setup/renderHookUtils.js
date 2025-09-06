@@ -266,6 +266,110 @@ export const testHookErrorScenarios = async (hookCallback, errorScenarios, optio
   return results;
 };
 
+/**
+ * Performance monitoring utilities (consolidated from performance-monitor.js)
+ */
+export const performanceMonitor = {
+  // Measure hook performance
+  measureHookPerformance: async (hookCallback, testName, options = {}) => {
+    const startTime = Date.now();
+    const memoryStart = process.memoryUsage ? process.memoryUsage() : { heapUsed: 0 };
+    
+    try {
+      const result = safeRenderHook(hookCallback, options);
+      const endTime = Date.now();
+      const memoryEnd = process.memoryUsage ? process.memoryUsage() : { heapUsed: 0 };
+      
+      return {
+        result,
+        executionTime: endTime - startTime,
+        memoryDelta: Math.round((memoryEnd.heapUsed - memoryStart.heapUsed) / 1024 / 1024 * 100) / 100, // MB
+        testName
+      };
+    } catch (error) {
+      const endTime = Date.now();
+      throw new Error(`${testName} failed after ${endTime - startTime}ms: ${error.message}`);
+    }
+  },
+
+  // Performance thresholds for hook operations
+  HOOK_PERFORMANCE_THRESHOLDS: {
+    INITIALIZATION: 1000, // ms
+    UPDATE: 500, // ms
+    CLEANUP: 200 // ms
+  },
+
+  // Assert hook performance
+  expectHookPerformance: (measurement, threshold, tolerance = 0.2) => {
+    const maxTime = threshold * (1 + tolerance);
+    if (measurement.executionTime > maxTime) {
+      throw new Error(`Hook performance exceeded threshold: ${measurement.executionTime}ms > ${maxTime}ms`);
+    }
+  }
+};
+
+/**
+ * Memory monitoring for hooks
+ */
+export const memoryMonitor = {
+  // Monitor memory during hook operations
+  monitorHookMemory: async (hookCallback, options = {}) => {
+    const { samples = 5, interval = 100 } = options;
+    const memorySnapshots = [];
+    
+    // Initial snapshot
+    memorySnapshots.push({
+      timestamp: Date.now(),
+      memory: process.memoryUsage ? process.memoryUsage() : { heapUsed: 0 }
+    });
+
+    let result;
+    const monitoringInterval = setInterval(() => {
+      memorySnapshots.push({
+        timestamp: Date.now(),
+        memory: process.memoryUsage ? process.memoryUsage() : { heapUsed: 0 }
+      });
+    }, interval);
+
+    try {
+      result = safeRenderHook(hookCallback, options);
+      
+      // Final snapshot
+      clearInterval(monitoringInterval);
+      memorySnapshots.push({
+        timestamp: Date.now(),
+        memory: process.memoryUsage ? process.memoryUsage() : { heapUsed: 0 }
+      });
+
+      const memoryProfile = this.analyzeMemoryProfile(memorySnapshots);
+      
+      return { result, memoryProfile };
+    } catch (error) {
+      clearInterval(monitoringInterval);
+      throw error;
+    }
+  },
+
+  // Analyze memory profile from snapshots
+  analyzeMemoryProfile: (snapshots) => {
+    if (snapshots.length < 2) return null;
+
+    const heapUsages = snapshots.map(s => s.memory.heapUsed);
+    const initial = heapUsages[0];
+    const final = heapUsages[heapUsages.length - 1];
+    const peak = Math.max(...heapUsages);
+
+    return {
+      initial: Math.round(initial / 1024 / 1024 * 100) / 100,
+      final: Math.round(final / 1024 / 1024 * 100) / 100,
+      peak: Math.round(peak / 1024 / 1024 * 100) / 100,
+      delta: Math.round((final - initial) / 1024 / 1024 * 100) / 100,
+      peakDelta: Math.round((peak - initial) / 1024 / 1024 * 100) / 100,
+      snapshots: snapshots.length
+    };
+  }
+};
+
 // Export all utilities
 export default {
   safeRenderHook,
@@ -274,5 +378,7 @@ export default {
   renderHookWithCleanup,
   waitForAsyncHook,
   batchHookOperations,
-  testHookErrorScenarios
+  testHookErrorScenarios,
+  performanceMonitor,
+  memoryMonitor
 };

@@ -269,3 +269,122 @@ export const generateLargeRevealedAreaSet = (count = 10000) => {
     };
   });
 };
+
+// Performance test data generators (consolidated from performance-monitor.js)
+export const generatePerformanceTestData = {
+  // Generate test data for different performance scenarios
+  smallDataset: () => ({
+    locations: generateLargeLocationSet(100),
+    revealedAreas: generateLargeRevealedAreaSet(50),
+    expectedTime: 100 // ms
+  }),
+  
+  mediumDataset: () => ({
+    locations: generateLargeLocationSet(1000),
+    revealedAreas: generateLargeRevealedAreaSet(500),
+    expectedTime: 1000 // ms
+  }),
+  
+  largeDataset: () => ({
+    locations: generateLargeLocationSet(10000),
+    revealedAreas: generateLargeRevealedAreaSet(5000),
+    expectedTime: 5000 // ms
+  }),
+
+  // Generate test data with specific characteristics for edge cases
+  edgeCaseData: () => ({
+    // Locations at extreme coordinates
+    extremeLocations: [
+      { id: 1, latitude: 89.9, longitude: 179.9, timestamp: Date.now() },
+      { id: 2, latitude: -89.9, longitude: -179.9, timestamp: Date.now() },
+      { id: 3, latitude: 0, longitude: 0, timestamp: Date.now() }
+    ],
+    
+    // Very small revealed areas
+    tinyAreas: Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      geojson: JSON.stringify({
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [0.0001 * i, 0.0001 * i],
+            [0.0001 * i + 0.00001, 0.0001 * i],
+            [0.0001 * i + 0.00001, 0.0001 * i + 0.00001],
+            [0.0001 * i, 0.0001 * i + 0.00001],
+            [0.0001 * i, 0.0001 * i]
+          ]]
+        },
+        properties: {}
+      })
+    })),
+    
+    // Complex polygons with many vertices
+    complexPolygons: Array.from({ length: 5 }, (_, i) => {
+      const vertices = 100; // Many vertices
+      const centerLat = 37.7749 + i * 0.01;
+      const centerLon = -122.4194 + i * 0.01;
+      const radius = 0.001;
+      
+      const coordinates = [];
+      for (let j = 0; j <= vertices; j++) {
+        const angle = (j / vertices) * 2 * Math.PI;
+        coordinates.push([
+          centerLon + radius * Math.cos(angle),
+          centerLat + radius * Math.sin(angle)
+        ]);
+      }
+      
+      return {
+        id: i + 1,
+        geojson: JSON.stringify({
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [coordinates]
+          },
+          properties: {}
+        })
+      };
+    })
+  })
+};
+
+// Test data validation utilities (consolidated from various test files)
+export const validateTestDataStructure = {
+  location: (location) => {
+    return location &&
+           typeof location.id === 'number' &&
+           typeof location.latitude === 'number' &&
+           typeof location.longitude === 'number' &&
+           typeof location.timestamp === 'number' &&
+           location.latitude >= -90 && location.latitude <= 90 &&
+           location.longitude >= -180 && location.longitude <= 180 &&
+           !isNaN(location.latitude) && !isNaN(location.longitude);
+  },
+
+  revealedArea: (area) => {
+    try {
+      const geojson = typeof area.geojson === 'string' ? JSON.parse(area.geojson) : area.geojson;
+      return area &&
+             typeof area.id === 'number' &&
+             geojson &&
+             geojson.type === 'Feature' &&
+             geojson.geometry &&
+             (geojson.geometry.type === 'Polygon' || geojson.geometry.type === 'MultiPolygon');
+    } catch {
+      return false;
+    }
+  },
+
+  statistics: (stats) => {
+    return stats &&
+           stats.totalDistance &&
+           typeof stats.totalDistance.miles === 'number' &&
+           typeof stats.totalDistance.kilometers === 'number' &&
+           stats.worldExploration &&
+           typeof stats.worldExploration.percentage === 'number' &&
+           stats.uniqueRegions &&
+           typeof stats.uniqueRegions.countries === 'number';
+  }
+};

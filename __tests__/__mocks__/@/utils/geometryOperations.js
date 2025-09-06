@@ -11,42 +11,149 @@ const mockGeometryOperations = {
     // Handle invalid geometry types
     if (geometry.type === 'invalid' || geometry.type === 'NotFeature') return null;
     
-    // Validate Feature structure
-    if (geometry.type !== 'Feature') return null;
+    // Handle non-Feature geometries by wrapping them
+    if (geometry.type !== 'Feature') {
+      // If it's a raw geometry, wrap it in a Feature
+      const validGeometryTypes = ['Polygon', 'MultiPolygon', 'Point', 'LineString'];
+      if (validGeometryTypes.includes(geometry.type)) {
+        return {
+          type: 'Feature',
+          properties: {},
+          geometry: geometry
+        };
+      }
+      return null;
+    }
+    
     if (!geometry.geometry) return null;
     
-    // Validate geometry types
-    const validTypes = ['Polygon', 'MultiPolygon'];
+    // Validate geometry types and coordinates
+    const validTypes = ['Polygon', 'MultiPolygon', 'Point', 'LineString'];
     if (!validTypes.includes(geometry.geometry.type)) return null;
+    
+    // Validate coordinates exist and are arrays
+    if (!geometry.geometry.coordinates || !Array.isArray(geometry.geometry.coordinates)) {
+      return null;
+    }
+    
+    // Additional validation for specific geometry types
+    if (geometry.geometry.type === 'Polygon') {
+      if (!Array.isArray(geometry.geometry.coordinates[0]) || 
+          geometry.geometry.coordinates[0].length < 4) {
+        return null;
+      }
+    } else if (geometry.geometry.type === 'MultiPolygon') {
+      if (!geometry.geometry.coordinates.every(polygon => 
+          Array.isArray(polygon) && 
+          Array.isArray(polygon[0]) && 
+          polygon[0].length >= 4)) {
+        return null;
+      }
+    } else if (geometry.geometry.type === 'Point') {
+      if (geometry.geometry.coordinates.length !== 2 ||
+          typeof geometry.geometry.coordinates[0] !== 'number' ||
+          typeof geometry.geometry.coordinates[1] !== 'number') {
+        return null;
+      }
+    }
     
     // Return sanitized geometry with proper structure
     return {
       type: 'Feature',
       properties: geometry.properties || {},
-      geometry: geometry.geometry
+      geometry: {
+        type: geometry.geometry.type,
+        coordinates: geometry.geometry.coordinates
+      }
     };
   }),
   
   validateGeometry: jest.fn((geometry) => {
+    const errors = [];
+    const warnings = [];
+    
     // Handle null/undefined inputs
-    if (!geometry) return { isValid: false, errors: ['Geometry is null or undefined'], warnings: [] };
+    if (!geometry) {
+      return { isValid: false, errors: ['Geometry is null or undefined'], warnings: [] };
+    }
+    
+    if (typeof geometry !== 'object') {
+      return { isValid: false, errors: ['Geometry must be an object'], warnings: [] };
+    }
     
     // Validate Feature structure
     if (geometry.type !== 'Feature') {
-      return { isValid: false, errors: ['Not a valid Feature'], warnings: [] };
+      // Allow raw geometries with warning
+      const validGeometryTypes = ['Polygon', 'MultiPolygon', 'Point', 'LineString'];
+      if (validGeometryTypes.includes(geometry.type)) {
+        warnings.push('Raw geometry provided, should be wrapped in Feature');
+        // Validate raw geometry
+        if (!geometry.coordinates || !Array.isArray(geometry.coordinates)) {
+          errors.push('Missing or invalid coordinates');
+        }
+      } else {
+        errors.push('Not a valid Feature or geometry type');
+      }
+    } else {
+      // Validate Feature properties
+      if (!geometry.geometry) {
+        errors.push('Missing geometry property in Feature');
+      } else {
+        // Validate geometry types
+        const validTypes = ['Polygon', 'MultiPolygon', 'Point', 'LineString'];
+        if (!validTypes.includes(geometry.geometry.type)) {
+          errors.push(`Invalid geometry type: ${geometry.geometry.type}`);
+        }
+        
+        // Validate coordinates
+        if (!geometry.geometry.coordinates || !Array.isArray(geometry.geometry.coordinates)) {
+          errors.push('Missing or invalid coordinates in geometry');
+        } else {
+          // Type-specific validation
+          if (geometry.geometry.type === 'Point') {
+            if (geometry.geometry.coordinates.length !== 2) {
+              errors.push('Point coordinates must have exactly 2 elements');
+            } else if (typeof geometry.geometry.coordinates[0] !== 'number' || 
+                      typeof geometry.geometry.coordinates[1] !== 'number') {
+              errors.push('Point coordinates must be numbers');
+            } else if (!isFinite(geometry.geometry.coordinates[0]) || 
+                      !isFinite(geometry.geometry.coordinates[1])) {
+              errors.push('Point coordinates must be finite numbers');
+            }
+          } else if (geometry.geometry.type === 'Polygon') {
+            if (!Array.isArray(geometry.geometry.coordinates[0])) {
+              errors.push('Polygon coordinates must be array of rings');
+            } else if (geometry.geometry.coordinates[0].length < 4) {
+              errors.push('Polygon ring must have at least 4 coordinates');
+            } else {
+              // Check if ring is closed
+              const ring = geometry.geometry.coordinates[0];
+              const first = ring[0];
+              const last = ring[ring.length - 1];
+              if (first[0] !== last[0] || first[1] !== last[1]) {
+                warnings.push('Polygon ring is not closed');
+              }
+            }
+          } else if (geometry.geometry.type === 'MultiPolygon') {
+            if (!geometry.geometry.coordinates.every(polygon => 
+                Array.isArray(polygon) && Array.isArray(polygon[0]))) {
+              errors.push('MultiPolygon coordinates structure is invalid');
+            }
+          }
+        }
+      }
+      
+      // Validate properties exist (can be empty object)
+      if (geometry.properties === undefined) {
+        warnings.push('Missing properties object, using empty object');
+      }
     }
     
-    if (!geometry.geometry) {
-      return { isValid: false, errors: ['Missing geometry'], warnings: [] };
-    }
-    
-    // Validate geometry types
-    const validTypes = ['Polygon', 'MultiPolygon', 'Point'];
-    if (!validTypes.includes(geometry.geometry.type)) {
-      return { isValid: false, errors: [`Invalid geometry type: ${geometry.geometry.type}`], warnings: [] };
-    }
-    
-    return { isValid: true, errors: [], warnings: [] };
+    return { 
+      isValid: errors.length === 0, 
+      errors, 
+      warnings 
+    };
   }),
   
   simplifyGeometry: jest.fn((geometry) => geometry),
@@ -279,20 +386,183 @@ const mockGeometryOperations = {
   normalizeGeometry: jest.fn((geometry) => geometry),
   optimizeGeometry: jest.fn((geometry) => geometry),
   
-  // Error handling
+  // Error handling with enhanced logging and recovery
   handleGeometryError: jest.fn((error, operation, fallback) => {
-    console.warn(`Geometry error in ${operation}:`, error);
-    return fallback;
+    const errorInfo = {
+      operation,
+      error: error.message,
+      timestamp: Date.now(),
+      fallbackUsed: !!fallback
+    };
+    
+    // Log error details for debugging
+    console.warn(`Geometry error in ${operation}:`, errorInfo);
+    
+    // Return fallback or null
+    return fallback || null;
   }),
   
-  // Error class
+  // Enhanced error recovery strategies
+  recoverFromGeometryError: jest.fn((error, geometry, operation) => {
+    // Attempt different recovery strategies based on error type
+    if (error.message.includes('coordinates')) {
+      // Try to fix coordinate issues
+      if (geometry && geometry.geometry && geometry.geometry.coordinates) {
+        return mockGeometryOperations.sanitizeGeometry(geometry);
+      }
+    }
+    
+    if (error.message.includes('topology')) {
+      // Try to simplify geometry for topology errors
+      return mockGeometryOperations.simplifyGeometry(geometry);
+    }
+    
+    // Default fallback - return a simple valid geometry
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]
+        ]]
+      }
+    };
+  }),
+  
+  // Batch operation with error handling
+  batchGeometryOperation: jest.fn((geometries, operation) => {
+    const results = [];
+    const errors = [];
+    
+    geometries.forEach((geometry, index) => {
+      try {
+        let result;
+        switch (operation) {
+          case 'sanitize':
+            result = mockGeometryOperations.sanitizeGeometry(geometry);
+            break;
+          case 'validate':
+            result = mockGeometryOperations.validateGeometry(geometry);
+            break;
+          case 'simplify':
+            result = mockGeometryOperations.simplifyGeometry(geometry);
+            break;
+          default:
+            result = geometry;
+        }
+        
+        results.push({ index, result, success: true });
+      } catch (error) {
+        errors.push({ index, error: error.message, success: false });
+        results.push({ index, result: null, success: false });
+      }
+    });
+    
+    return {
+      results,
+      errors,
+      successCount: results.filter(r => r.success).length,
+      errorCount: errors.length
+    };
+  }),
+  
+  // Performance monitoring with detailed metrics
+  measureGeometryPerformance: jest.fn().mockImplementation(async (operation, ...args) => {
+    const startTime = Date.now();
+    const startMemory = process.memoryUsage ? process.memoryUsage().heapUsed : 0;
+    
+    let result;
+    let error = null;
+    
+    try {
+      result = await operation(...args);
+    } catch (e) {
+      error = e;
+      result = null;
+    }
+    
+    const endTime = Date.now();
+    const endMemory = process.memoryUsage ? process.memoryUsage().heapUsed : 0;
+    
+    return {
+      result,
+      error,
+      metrics: {
+        executionTime: endTime - startTime,
+        memoryDelta: endMemory - startMemory,
+        timestamp: startTime,
+        success: !error
+      }
+    };
+  }),
+  
+  // Error class with enhanced debugging info
   GeometryOperationError: class GeometryOperationError extends Error {
-    constructor(message, operation, originalError) {
+    constructor(message, operation, originalError, geometry = null) {
       super(message);
       this.name = 'GeometryOperationError';
       this.operation = operation;
       this.originalError = originalError;
+      this.geometry = geometry;
+      this.timestamp = Date.now();
+      
+      // Add stack trace from original error if available
+      if (originalError && originalError.stack) {
+        this.stack = `${this.stack}\nCaused by: ${originalError.stack}`;
+      }
     }
+    
+    toJSON() {
+      return {
+        name: this.name,
+        message: this.message,
+        operation: this.operation,
+        timestamp: this.timestamp,
+        originalError: this.originalError ? this.originalError.message : null
+      };
+    }
+  },
+  
+  // Test utilities for controlling mock behavior
+  _setValidationMode: (mode) => {
+    // Modes: 'strict', 'lenient', 'permissive'
+    mockGeometryOperations._validationMode = mode;
+  },
+  
+  _simulateError: (operation, errorType = 'generic') => {
+    const errors = {
+      generic: new Error('Geometry operation failed'),
+      topology: new Error('Topology error in geometry'),
+      coordinates: new Error('Invalid coordinates'),
+      memory: new Error('Out of memory during geometry operation'),
+      timeout: new Error('Geometry operation timeout')
+    };
+    
+    const error = errors[errorType] || errors.generic;
+    
+    // Override the specified operation to throw error
+    const originalMethod = mockGeometryOperations[operation];
+    mockGeometryOperations[operation] = jest.fn().mockImplementation(() => {
+      throw error;
+    });
+    
+    // Return cleanup function
+    return () => {
+      mockGeometryOperations[operation] = originalMethod;
+    };
+  },
+  
+  _reset: () => {
+    // Reset all mocks to default behavior
+    Object.keys(mockGeometryOperations).forEach(key => {
+      if (typeof mockGeometryOperations[key] === 'function' && 
+          mockGeometryOperations[key].mockClear) {
+        mockGeometryOperations[key].mockClear();
+      }
+    });
+    
+    delete mockGeometryOperations._validationMode;
   }
 };
 

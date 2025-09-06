@@ -71,18 +71,18 @@
     - _Requirements: 3.2, 3.4_
 
 - [ ] 5. Consolidate Test Setup and Mock Files
-  - [ ] 5.1 Merge duplicate Jest setup files
+  - [x] 5.1 Merge duplicate Jest setup files
     - Consolidate __tests__/setup/jest.setup.js and __tests__/setup/jestSetup.js into a single file
     - Remove duplicate mock implementations between setup files
     - _Requirements: 4.3, 6.5_
 
-  - [ ] 5.2 Enhance existing mock implementations
+  - [x] 5.2 Enhance existing mock implementations
     - Improve database mocks in existing setup files to be more realistic
     - Enhance geometry operation mocks to handle edge cases
     - Standardize mock behavior across all test files
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-  - [ ] 5.3 Consolidate test utilities
+  - [x] 5.3 Consolidate test utilities
     - Merge duplicate test utilities into existing __tests__/setup/ files
     - Remove unused test helper functions
     - Standardize test data generation in existing factory files

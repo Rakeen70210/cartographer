@@ -7,8 +7,24 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Test suite configuration
+// Test suite configuration (consolidated from multiple test runners)
 const TEST_SUITES = {
+  // Core functionality tests (from run-core-tests.js)
+  core: {
+    name: 'Core Tests',
+    pattern: '__tests__/{fogCalculation,geometryValidation,distanceCalculator,worldExplorationCalculator}.test.js',
+    timeout: 30000,
+    description: 'Essential functionality tests that must pass'
+  },
+  
+  // Fog validation tests (from run-fog-validation.js)
+  fogValidation: {
+    name: 'Fog Validation Tests',
+    pattern: '__tests__/{AdvancedFogOverlay,map.integration.simple,database.persistence.simple,location-tracking.integration.simple}.test.js',
+    timeout: 60000,
+    description: 'Complete fog workflow validation from GPS to visual rendering'
+  },
+  
   integration: {
     name: 'Integration Tests',
     pattern: '__tests__/integration/**/*.test.js',
