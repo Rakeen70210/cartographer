@@ -639,31 +639,31 @@ export const testUtilities = {
   }
 };
 
-// Performance expectations (consolidated from performanceExpectations.js)
+// Optimized performance expectations (requirement 5.1, 5.3, 5.4)
 export const PERFORMANCE_EXPECTATIONS = {
   DISTANCE_CALCULATION: {
-    SMALL_DATASET: 100,      // < 1000 locations
-    MEDIUM_DATASET: 2000,    // 1000-10000 locations  
-    LARGE_DATASET: 8000,     // 10000-50000 locations
-    TIMEOUT: 15000           // Maximum timeout for distance calculations
+    SMALL_DATASET: 50,       // Reduced for faster execution
+    MEDIUM_DATASET: 500,     // Reduced for better reliability  
+    LARGE_DATASET: 2000,     // Significantly reduced for manageable performance
+    TIMEOUT: 10000           // Reduced timeout (requirement 5.1)
   },
   WORLD_EXPLORATION: {
-    SMALL_DATASET: 500,      // < 1000 revealed areas
-    MEDIUM_DATASET: 5000,    // 1000-5000 revealed areas
-    LARGE_DATASET: 15000,    // 5000-10000 revealed areas
-    TIMEOUT: 25000           // Maximum timeout for world exploration calculations
+    SMALL_DATASET: 200,      // Reduced for faster execution
+    MEDIUM_DATASET: 1000,    // Reduced for better reliability
+    LARGE_DATASET: 3000,     // Reduced for manageable performance
+    TIMEOUT: 15000           // Reduced timeout (requirement 5.1)
   },
   CACHE_OPERATIONS: {
-    SINGLE_SET: 100,         // Single cache set operation
-    SINGLE_GET: 50,          // Single cache get operation
-    BATCH_SET: 2000,         // Batch cache set operations
-    TIMEOUT: 10000           // Maximum timeout for cache operations
+    SINGLE_SET: 50,          // Reduced for faster execution
+    SINGLE_GET: 25,          // Reduced for faster execution
+    BATCH_SET: 500,          // Reduced for better reliability
+    TIMEOUT: 5000            // Reduced timeout (requirement 5.1)
   },
   COMPONENT_RENDERING: {
-    SIMPLE_RENDER: 100,      // Simple component render
-    COMPLEX_RENDER: 500,     // Complex component with data
-    LARGE_LIST: 2000,        // Large list rendering
-    TIMEOUT: 5000            // Maximum timeout for component rendering
+    SIMPLE_RENDER: 50,       // Reduced for faster execution
+    COMPLEX_RENDER: 200,     // Reduced for faster execution
+    LARGE_LIST: 1000,        // Reduced for better reliability
+    TIMEOUT: 3000            // Reduced timeout (requirement 5.1)
   }
 };
 
@@ -673,21 +673,21 @@ export const getAdjustedExpectation = (baseExpectation) => {
   return Math.ceil(baseExpectation * multiplier);
 };
 
-// Test suite configuration (consolidated from test runner files)
+// Optimized test suite configuration (requirement 5.1: < 30 seconds per test)
 export const TEST_SUITE_CONFIGS = {
   core: {
     name: 'Core Tests',
-    timeout: 30000,
+    timeout: 20000,          // Reduced for faster execution
     description: 'Essential functionality tests'
   },
   integration: {
     name: 'Integration Tests',
-    timeout: 60000,
+    timeout: 30000,          // Reduced for better performance
     description: 'Cross-component interaction tests'
   },
   performance: {
     name: 'Performance Tests',
-    timeout: 120000,
+    timeout: 30000,          // Significantly reduced (requirement 5.1)
     description: 'Performance and benchmark tests'
   }
 };

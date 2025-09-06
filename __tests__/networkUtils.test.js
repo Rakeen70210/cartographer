@@ -60,7 +60,7 @@ describe('NetworkUtils', () => {
     it('should timeout connectivity test', async () => {
       global.fetch.mockImplementation((url, options) => 
         new Promise((resolve, reject) => {
-          const timeoutId = setTimeout(() => resolve({ ok: true }), 2000);
+          const timeoutId = setTimeout(() => resolve({ ok: true }), 1000); // Reduced delay
           
           // Handle abort signal
           if (options?.signal) {
@@ -73,7 +73,7 @@ describe('NetworkUtils', () => {
       );
 
       const result = await networkUtils.testConnectivity({
-        timeout: 500,
+        timeout: 200, // Reduced timeout for faster test execution
         retryAttempts: 1
       });
 
@@ -271,7 +271,7 @@ describe('withOfflineFallback', () => {
 
   it('should handle timeout correctly', async () => {
     const onlineFunction = jest.fn().mockImplementation(() => 
-      new Promise(resolve => setTimeout(() => resolve('online result'), 2000))
+      new Promise(resolve => setTimeout(() => resolve('online result'), 1000)) // Reduced delay
     );
     const offlineFallback = jest.fn().mockResolvedValue('offline result');
 
@@ -280,7 +280,7 @@ describe('withOfflineFallback', () => {
     const result = await withOfflineFallback(
       onlineFunction, 
       offlineFallback, 
-      { timeout: 500 }
+      { timeout: 200 } // Reduced timeout
     );
 
     expect(result.result).toBe('offline result');

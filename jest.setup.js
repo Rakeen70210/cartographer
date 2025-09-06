@@ -175,7 +175,7 @@ global.renderHookUtils = {
   },
   
   // Wait for hook to stabilize with timeout
-  waitForHookStable: async (result, timeout = 5000) => {
+  waitForHookStable: async (result, timeout = 3000) => { // Reduced default timeout
     const { waitFor } = require('@testing-library/react-native');
     
     try {
@@ -198,7 +198,7 @@ global.renderHookUtils = {
         }
         
         return true;
-      }, { timeout });
+      }, { timeout, interval: 50 }); // Reduced polling interval
     } catch (error) {
       if (error.message.includes('Hook not yet stable')) {
         // Hook didn't stabilize within timeout - this is acceptable in some cases
@@ -258,6 +258,39 @@ global.cleanup = () => {
   
   // Note: Don't call React Testing Library cleanup here as it causes Jest hook errors
   // The cleanup will be handled by Jest's afterEach automatically
+};
+
+// Timeout utilities for better async test handling
+global.timeoutUtils = {
+  // Create a promise that resolves after a delay
+  delay: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
+  
+  // Create a promise that rejects after a timeout
+  timeout: (ms, message = 'Operation timed out') => 
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  
+  // Race a promise against a timeout
+  withTimeout: async (promise, timeoutMs, timeoutMessage) => {
+    const timeoutPromise = global.timeoutUtils.timeout(timeoutMs, timeoutMessage);
+    return Promise.race([promise, timeoutPromise]);
+  },
+  
+  // Retry an async operation with exponential backoff
+  retry: async (operation, maxAttempts = 3, baseDelay = 100) => {
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxAttempts) {
+          const delay = baseDelay * Math.pow(2, attempt - 1);
+          await global.timeoutUtils.delay(delay);
+        }
+      }
+    }
+    throw lastError;
+  }
 };
 
 // Mock TurboModuleRegistry to prevent DevMenu errors and getViewManagerConfig issues
@@ -1535,8 +1568,21 @@ process.on('unhandledRejection', (reason, promise) => {
   // Don't exit the process in tests, just log the error
 });
 
-// Increase timeout for all tests to account for system variability
-jest.setTimeout(30000); // 30 seconds
+// Configure timeouts based on test type
+const configureTestTimeouts = () => {
+  // Default timeout for all tests
+  jest.setTimeout(30000); // 30 seconds
+  
+  // Set up timeout utilities for different test types
+  global.TEST_TIMEOUTS = {
+    UNIT: 5000,        // 5 seconds for unit tests
+    INTEGRATION: 15000, // 15 seconds for integration tests
+    PERFORMANCE: 60000, // 60 seconds for performance tests
+    E2E: 120000        // 2 minutes for end-to-end tests
+  };
+};
+
+configureTestTimeouts();
 
 // Silence console warnings during tests unless debugging
 if (!process.env.DEBUG_TESTS) {

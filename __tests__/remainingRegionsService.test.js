@@ -110,7 +110,7 @@ describe('Remaining Regions Service', () => {
 
     test('handles API timeout gracefully', async () => {
       GeographicApiService.getTotalRegionCounts.mockImplementation(
-        () => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100))
+        () => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 50)) // Reduced delay
       );
 
       const result = await calculateTotalAvailableRegions();

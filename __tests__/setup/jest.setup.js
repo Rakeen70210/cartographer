@@ -6,8 +6,8 @@
 // Import main setup from root - this provides mockLogger, mockDatabase, mockTurf, and other base mocks
 import '../../jest.setup.js';
 
-// Increase timeout for comprehensive tests
-jest.setTimeout(60000);
+// Optimized timeout for performance (requirement 5.1: < 30 seconds per test)
+jest.setTimeout(30000);
 
 // Global test utilities for comprehensive testing - extend existing utilities from root setup
 global.testUtils = {
