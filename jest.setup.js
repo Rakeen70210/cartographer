@@ -21,18 +21,18 @@ const mockLogger = {
   warn: jest.fn(),
   error: jest.fn(),
   success: jest.fn(),
-  
+
   // Session-based logging methods
   infoOnce: jest.fn(),
   warnOnce: jest.fn(),
   debugOnce: jest.fn(),
   successOnce: jest.fn(),
-  
+
   // Throttled logging methods
   infoThrottled: jest.fn(),
   warnThrottled: jest.fn(),
   debugThrottled: jest.fn(),
-  
+
   // Viewport-specific logging (heavily throttled)
   debugViewport: jest.fn(),
   infoViewport: jest.fn()
@@ -79,9 +79,9 @@ beforeEach(() => {
 
   // Reset console mocks to reduce noise during tests
   if (!process.env.DEBUG_TESTS) {
-    jest.spyOn(console, 'log').mockImplementation(() => {});
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    jest.spyOn(console, 'info').mockImplementation(() => {});
+    jest.spyOn(console, 'log').mockImplementation(() => { });
+    jest.spyOn(console, 'warn').mockImplementation(() => { });
+    jest.spyOn(console, 'info').mockImplementation(() => { });
     // Keep console.error for debugging test failures
   }
 });
@@ -93,7 +93,7 @@ afterEach(() => {
     console.warn.mockRestore?.();
     console.info.mockRestore?.();
   }
-  
+
   // Clear all mocks after each test
   jest.clearAllMocks();
 });
@@ -113,10 +113,34 @@ global.cleanupMockTimers = () => {
   jest.useRealTimers();
 };
 
-// Mock TurboModuleRegistry to prevent DevMenu errors
+// Mock TurboModuleRegistry to prevent DevMenu errors and getViewManagerConfig issues
 jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => ({
   get: jest.fn(() => null),
   getEnforcing: jest.fn(() => ({})),
+}));
+
+// Mock UIManager to prevent getViewManagerConfig errors
+jest.mock('react-native/Libraries/ReactNative/UIManager', () => ({
+  getViewManagerConfig: jest.fn(() => ({})),
+  hasViewManagerConfig: jest.fn(() => false),
+  getConstants: jest.fn(() => ({})),
+  getConstantsForViewManager: jest.fn(() => ({})),
+  measure: jest.fn(),
+  measureInWindow: jest.fn(),
+  measureLayout: jest.fn(),
+  measureLayoutRelativeToParent: jest.fn(),
+  updateView: jest.fn(),
+  setChildren: jest.fn(),
+  manageChildren: jest.fn(),
+  createView: jest.fn(),
+  removeSubviewsFromContainerWithID: jest.fn(),
+  replaceExistingNonRootView: jest.fn(),
+  setLayoutAnimationEnabledExperimental: jest.fn(),
+  configureNextLayoutAnimation: jest.fn(),
+  dispatchViewManagerCommand: jest.fn(),
+  blur: jest.fn(),
+  focus: jest.fn(),
+  findSubviewIn: jest.fn(),
 }));
 
 // Mock react-native modules comprehensively
@@ -129,6 +153,25 @@ jest.mock('react-native', () => {
     MockedComponent.displayName = name;
     return MockedComponent;
   };
+
+  // Create a proper Animated.Value constructor mock
+  function MockAnimatedValue(value) {
+    this.setValue = jest.fn();
+    this.addListener = jest.fn();
+    this.removeListener = jest.fn();
+    this.removeAllListeners = jest.fn();
+    this.stopAnimation = jest.fn();
+    this.resetAnimation = jest.fn();
+    this.interpolate = jest.fn((config) => {
+      // Return a string or number based on outputRange
+      if (config && config.outputRange && config.outputRange.length > 0) {
+        return config.outputRange[0];
+      }
+      return '0%';
+    });
+    this._value = value || 0;
+    this._listeners = {};
+  }
 
   return {
     StyleSheet: {
@@ -154,36 +197,36 @@ jest.mock('react-native', () => {
     ActivityIndicator: mockComponent('ActivityIndicator'),
     FlatList: (props) => {
       const React = require('react');
-      
+
       // Create a mock that renders items properly
       const { data, renderItem, keyExtractor, testID, style, ...otherProps } = props;
-      
+
       // If no data, render empty view
       if (!data || !Array.isArray(data) || data.length === 0) {
-        return React.createElement('View', { 
+        return React.createElement('View', {
           testID: testID || 'flat-list',
           style,
           ...otherProps
         });
       }
-      
+
       // Render items using the renderItem function
       try {
         const renderedItems = data.map((item, index) => {
           if (!renderItem) return null;
-          
+
           const renderedItem = renderItem({ item, index });
-          
+
           // Add key to rendered item if keyExtractor is provided
           if (keyExtractor && renderedItem && React.isValidElement(renderedItem)) {
             const key = keyExtractor(item, index);
             return React.cloneElement(renderedItem, { key });
           }
-          
+
           return renderedItem;
         }).filter(Boolean);
-        
-        return React.createElement('View', { 
+
+        return React.createElement('View', {
           testID: testID || 'flat-list',
           style,
           'data-testid': 'hierarchical-list',
@@ -191,7 +234,7 @@ jest.mock('react-native', () => {
         }, renderedItems);
       } catch (error) {
         // If rendering fails, return simple view
-        return React.createElement('View', { 
+        return React.createElement('View', {
           testID: testID || 'flat-list',
           style,
           ...otherProps
@@ -202,27 +245,7 @@ jest.mock('react-native', () => {
       View: mockComponent('Animated.View'),
       Text: mockComponent('Animated.Text'),
       ScrollView: mockComponent('Animated.ScrollView'),
-      Value: jest.fn().mockImplementation((value) => ({
-        setValue: jest.fn(),
-        addListener: jest.fn(),
-        removeListener: jest.fn(),
-        removeAllListeners: jest.fn(),
-        stopAnimation: jest.fn(),
-        resetAnimation: jest.fn(),
-        interpolate: jest.fn((config) => ({
-          setValue: jest.fn(),
-          addListener: jest.fn(),
-          removeListener: jest.fn(),
-          removeAllListeners: jest.fn(),
-          stopAnimation: jest.fn(),
-          resetAnimation: jest.fn(),
-          interpolate: jest.fn(),
-          _value: config?.outputRange?.[0] || '0%',
-          _listeners: {}
-        })),
-        _value: value,
-        _listeners: {}
-      })),
+      Value: MockAnimatedValue,
       timing: jest.fn(() => ({
         start: jest.fn((callback) => callback && callback({ finished: true })),
         stop: jest.fn(),
@@ -373,7 +396,7 @@ jest.mock('expo-sqlite', () => ({
       finalizeAsync: jest.fn().mockResolvedValue(undefined),
     }),
     closeAsync: jest.fn().mockResolvedValue(undefined),
-    
+
     // Sync methods (for backward compatibility)
     execSync: jest.fn(),
     getAllSync: jest.fn(() => []),
@@ -471,10 +494,80 @@ jest.mock('expo-router', () => ({
 // Mock React Navigation
 jest.mock('@react-navigation/bottom-tabs', () => ({
   useBottomTabBarHeight: jest.fn(() => 80),
+  createBottomTabNavigator: jest.fn(() => ({
+    Navigator: 'Navigator',
+    Screen: 'Screen',
+  })),
 }));
 
 jest.mock('@react-navigation/elements', () => ({
-  PlatformPressable: 'PlatformPressable',
+  PlatformPressable: (props) => {
+    const React = require('react');
+    const { TouchableOpacity } = require('react-native');
+    return React.createElement(TouchableOpacity, props, props.children);
+  },
+  Header: 'Header',
+  HeaderButton: 'HeaderButton',
+  HeaderTitle: 'HeaderTitle',
+  getHeaderTitle: jest.fn((options) => options.title || ''),
+}));
+
+jest.mock('@react-navigation/native', () => ({
+  NavigationContainer: (props) => {
+    const React = require('react');
+    return React.createElement('View', props, props.children);
+  },
+  DefaultTheme: {
+    dark: false,
+    colors: {
+      primary: '#007AFF',
+      background: '#FFFFFF',
+      card: '#FFFFFF',
+      text: '#000000',
+      border: '#E5E5E5',
+      notification: '#FF3B30',
+    },
+  },
+  DarkTheme: {
+    dark: true,
+    colors: {
+      primary: '#0A84FF',
+      background: '#000000',
+      card: '#1C1C1E',
+      text: '#FFFFFF',
+      border: '#38383A',
+      notification: '#FF453A',
+    },
+  },
+  ThemeProvider: (props) => {
+    const React = require('react');
+    return React.createElement('View', props, props.children);
+  },
+  useNavigation: jest.fn(() => ({
+    navigate: jest.fn(),
+    goBack: jest.fn(),
+    dispatch: jest.fn(),
+    setOptions: jest.fn(),
+    isFocused: jest.fn(() => true),
+    addListener: jest.fn(() => jest.fn()),
+  })),
+  useRoute: jest.fn(() => ({
+    key: 'test-route',
+    name: 'TestScreen',
+    params: {},
+  })),
+  useFocusEffect: jest.fn((callback) => {
+    // Simulate focus effect by calling the callback immediately
+    if (typeof callback === 'function') {
+      callback();
+    }
+  }),
+  useIsFocused: jest.fn(() => true),
+  CommonActions: {
+    navigate: jest.fn((name, params) => ({ type: 'NAVIGATE', payload: { name, params } })),
+    goBack: jest.fn(() => ({ type: 'GO_BACK' })),
+    reset: jest.fn((state) => ({ type: 'RESET', payload: state })),
+  },
 }));
 
 // Mock NetInfo
@@ -487,7 +580,7 @@ jest.mock('@react-native-community/netinfo', () => {
     })),
     addEventListener: jest.fn(() => jest.fn()),
   };
-  
+
   return {
     __esModule: true,
     default: mockNetInfo,
@@ -568,13 +661,33 @@ jest.mock('@/utils/mapStyling', () => ({
   getMapStyleName: jest.fn((style) => {
     const styleMap = {
       'mapbox://styles/mapbox/dark-v10': 'Dark',
+      'mapbox://styles/mapbox/dark-v11': 'Dark',
       'mapbox://styles/mapbox/light-v10': 'Light',
+      'mapbox://styles/mapbox/light-v11': 'Light',
       'mapbox://styles/mapbox/streets-v11': 'Street',
+      'mapbox://styles/mapbox/streets-v12': 'Street',
       'mapbox://styles/mapbox/satellite-v9': 'Satellite',
-      'mapbox://styles/mapbox/satellite-streets-v11': 'Satellite Street'
+      'mapbox://styles/mapbox/satellite-streets-v11': 'Satellite Street',
+      'mapbox://styles/mapbox/satellite-streets-v12': 'Satellite Street'
     };
     return styleMap[style] || 'Unknown';
   }),
+  getLocationMarkerStyling: jest.fn(() => ({
+    container: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: '#007AFF',
+      borderWidth: 2,
+      borderColor: '#FFFFFF'
+    },
+    core: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: '#FFFFFF'
+    }
+  })),
   createLocationMarkerStyling: jest.fn(() => ({
     container: {
       width: 20,
@@ -590,6 +703,12 @@ jest.mock('@/utils/mapStyling', () => ({
       borderRadius: 6,
       backgroundColor: '#FFFFFF'
     }
+  })),
+  // Add other map styling functions that might be used
+  getMapStyleUrl: jest.fn((styleName) => `mapbox://styles/mapbox/${styleName.toLowerCase()}-v11`),
+  createMapStyling: jest.fn(() => ({
+    container: { flex: 1 },
+    map: { flex: 1 }
   }))
 }));
 
@@ -597,7 +716,7 @@ jest.mock('@/utils/mapStyling', () => ({
 jest.mock('react-native-reanimated', () => {
   const React = require('react');
   const { View, Text, ScrollView } = require('react-native');
-  
+
   const mockComponent = (Component, name) => {
     const MockedComponent = React.forwardRef((props, ref) => {
       return React.createElement(Component, { ...props, ref }, props.children);
@@ -616,11 +735,15 @@ jest.mock('react-native-reanimated', () => {
     View: mockComponent(View, 'Animated.View'),
     Text: mockComponent(Text, 'Animated.Text'),
     ScrollView: mockComponent(ScrollView, 'Animated.ScrollView'),
-    useSharedValue: jest.fn((initialValue) => ({ 
+    useSharedValue: jest.fn((initialValue) => ({
       value: initialValue || 0,
       addListener: jest.fn(),
       removeListener: jest.fn(),
-      modify: jest.fn()
+      modify: jest.fn(),
+      interpolate: jest.fn((inputRange, outputRange, extrapolate) => {
+        // Return a simple mock that behaves like an interpolated value
+        return outputRange ? outputRange[0] : '0%';
+      })
     })),
     useAnimatedStyle: jest.fn(() => ({})),
     useAnimatedRef: jest.fn(() => ({ current: null })),
@@ -642,7 +765,7 @@ jest.mock('react-native-reanimated', () => {
     }),
     runOnJS: jest.fn((fn) => (...args) => fn(...args)),
     interpolate: jest.fn((value, inputRange, outputRange) => outputRange[0]),
-    Extrapolate: { 
+    Extrapolate: {
       CLAMP: 'clamp',
       EXTEND: 'extend',
       IDENTITY: 'identity'
@@ -709,7 +832,7 @@ const mockDatabase = {
       finalizeAsync: jest.fn().mockResolvedValue(undefined),
     }),
     closeAsync: jest.fn().mockResolvedValue(undefined),
-    
+
     // Sync methods (for backward compatibility)
     execSync: jest.fn(),
     getAllSync: jest.fn(() => []),
@@ -723,17 +846,17 @@ const mockDatabase = {
     })),
     closeSync: jest.fn(),
   },
-  
+
   // Location operations
   getLocations: jest.fn().mockResolvedValue([]),
   saveLocation: jest.fn().mockResolvedValue({ id: 1 }),
   deleteLocation: jest.fn().mockResolvedValue(),
-  
+
   // Revealed area operations
   getRevealedAreas: jest.fn().mockResolvedValue([]),
   saveRevealedArea: jest.fn().mockResolvedValue({ id: 1 }),
   deleteRevealedArea: jest.fn().mockResolvedValue(),
-  
+
   // Cache operations
   getStatisticsCache: jest.fn().mockResolvedValue(null),
   saveStatisticsCache: jest.fn().mockResolvedValue(),
@@ -741,7 +864,7 @@ const mockDatabase = {
   clearAllStatisticsCache: jest.fn().mockResolvedValue(),
   deleteExpiredStatisticsCache: jest.fn().mockResolvedValue(),
   getAllStatisticsCache: jest.fn().mockResolvedValue([]),
-  
+
   // Geocoding operations
   getLocationGeocoding: jest.fn().mockResolvedValue(null),
   saveLocationGeocoding: jest.fn().mockResolvedValue(),
@@ -900,24 +1023,24 @@ global.mockTurf = mockTurf;
 global.testUtils = {
   // Wait for async operations to complete
   waitForAsync: (ms = 0) => new Promise(resolve => setTimeout(resolve, ms)),
-  
+
   // Create a mock function with consistent behavior
   createMockFunction: (returnValue) => jest.fn().mockResolvedValue(returnValue),
-  
+
   // Create a mock function that fails
   createFailingMockFunction: (error) => jest.fn().mockRejectedValue(error),
-  
+
   // Simulate network delay
   simulateNetworkDelay: (ms = 100) => new Promise(resolve => setTimeout(resolve, ms)),
-  
+
   // Generate consistent test IDs
   generateTestId: (prefix, suffix) => `${prefix}-${suffix || Date.now()}`,
-  
+
   // Validate mock call arguments
   expectMockCalledWith: (mockFn, expectedArgs) => {
     expect(mockFn).toHaveBeenCalledWith(...expectedArgs);
   },
-  
+
   // Create consistent mock geometry
   createMockPolygon: (offset = 0) => ({
     type: 'Feature',
@@ -933,7 +1056,7 @@ global.testUtils = {
       ]]
     }
   }),
-  
+
   // Create mock point
   createMockPoint: (lng = -122.4194, lat = 37.7749) => ({
     type: 'Feature',
@@ -943,7 +1066,7 @@ global.testUtils = {
     },
     properties: {}
   }),
-  
+
   // Wait for hook to stabilize
   waitForHookStable: async (result, timeout = 5000) => {
     const startTime = Date.now();
@@ -964,7 +1087,7 @@ global.performanceUtils = {
     await operation();
     return Date.now() - start;
   },
-  
+
   expectPerformance: (actualTime, expectedTime, tolerance = 0.2) => {
     const maxTime = expectedTime * (1 + tolerance);
     expect(actualTime).toBeLessThan(maxTime);
@@ -976,7 +1099,7 @@ global.errorUtils = {
   expectError: async (operation, expectedErrorMessage) => {
     await expect(operation()).rejects.toThrow(expectedErrorMessage);
   },
-  
+
   expectNoError: async (operation) => {
     await expect(operation()).resolves.not.toThrow();
   }
@@ -992,13 +1115,13 @@ global.validationUtils = {
     expect(lon).toBeGreaterThanOrEqual(-180);
     expect(lon).toBeLessThanOrEqual(180);
   },
-  
+
   expectValidTimestamp: (timestamp) => {
     expect(typeof timestamp).toBe('number');
     expect(timestamp).toBeGreaterThan(0);
     expect(timestamp).toBeLessThanOrEqual(Date.now());
   },
-  
+
   expectValidPercentage: (percentage) => {
     expect(typeof percentage).toBe('number');
     expect(percentage).toBeGreaterThanOrEqual(0);
