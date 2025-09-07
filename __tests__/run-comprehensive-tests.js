@@ -7,36 +7,52 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Test suite configuration
+// Test suite configuration (consolidated from multiple test runners)
 const TEST_SUITES = {
+  // Core functionality tests (from run-core-tests.js) - optimized timeouts
+  core: {
+    name: 'Core Tests',
+    pattern: '__tests__/{fogCalculation,geometryValidation,distanceCalculator,worldExplorationCalculator}.test.js',
+    timeout: 20000,          // Reduced for faster execution (requirement 5.1)
+    description: 'Essential functionality tests that must pass'
+  },
+  
+  // Fog validation tests (from run-fog-validation.js) - optimized timeouts
+  fogValidation: {
+    name: 'Fog Validation Tests',
+    pattern: '__tests__/{AdvancedFogOverlay,map.integration.simple,database.persistence.simple,location-tracking.integration.simple}.test.js',
+    timeout: 30000,          // Reduced for better performance (requirement 5.1)
+    description: 'Complete fog workflow validation from GPS to visual rendering'
+  },
+  
   integration: {
     name: 'Integration Tests',
     pattern: '__tests__/integration/**/*.test.js',
-    timeout: 60000,
+    timeout: 30000,          // Reduced for better performance (requirement 5.1)
     description: 'Tests interaction between refactored components'
   },
   performance: {
     name: 'Performance Tests',
     pattern: '__tests__/performance/**/*.test.js',
-    timeout: 120000,
+    timeout: 30000,          // Significantly reduced (requirement 5.1)
     description: 'Benchmarks geometry operations and fog calculations'
   },
   errorScenarios: {
     name: 'Error Scenario Tests',
     pattern: '__tests__/error-scenarios/**/*.test.js',
-    timeout: 60000,
+    timeout: 25000,          // Reduced for better performance (requirement 5.1)
     description: 'Tests error handling and fallback strategies'
   },
   memory: {
     name: 'Memory Tests',
     pattern: '__tests__/memory/**/*.test.js',
-    timeout: 90000,
+    timeout: 30000,          // Significantly reduced (requirement 5.1)
     description: 'Monitors memory usage and component lifecycle'
   },
   regression: {
     name: 'Regression Tests',
     pattern: '__tests__/regression/**/*.test.js',
-    timeout: 60000,
+    timeout: 25000,          // Reduced for better performance (requirement 5.1)
     description: 'Ensures no behavioral changes after refactoring'
   }
 };

@@ -236,7 +236,7 @@ describe('withErrorHandling', () => {
 
   it('should handle async operations', async () => {
     const operation = jest.fn().mockImplementation(async () => {
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await global.timeoutUtils.delay(5); // Use timeout utility with reduced delay
       return 'async result';
     });
     

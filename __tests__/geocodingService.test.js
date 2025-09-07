@@ -182,11 +182,11 @@ describe('Geocoding Service', () => {
 
       Location.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
       Location.reverseGeocodeAsync.mockImplementation(() => 
-        new Promise(resolve => setTimeout(resolve, 2000))
+        new Promise(resolve => setTimeout(resolve, 500)) // Reduced delay
       );
 
       await expect(reverseGeocode(40.7128, -74.0060, { 
-        timeout: 100, 
+        timeout: 50, // Reduced timeout for faster test execution
         fallbackToOffline: false 
       })).rejects.toThrow('Geocoding timeout');
     });

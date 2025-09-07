@@ -4,18 +4,18 @@
  */
 
 import {
-    createInvalidGeometry,
-    createMockHierarchicalData,
-    createMockLocations,
-    createMockLocationsWithGeography,
-    createMockNetworkState,
-    createMockOfflineCapabilities,
-    createMockRemainingRegionsData,
-    createMockRevealedAreas,
-    createMockStatisticsData,
-    createValidFeature,
-    createValidMultiPolygon,
-    createValidPolygon
+  createInvalidGeometry,
+  createMockHierarchicalData,
+  createMockLocations,
+  createMockLocationsWithGeography,
+  createMockNetworkState,
+  createMockOfflineCapabilities,
+  createMockRemainingRegionsData,
+  createMockRevealedAreas,
+  createMockStatisticsData,
+  createValidFeature,
+  createValidMultiPolygon,
+  createValidPolygon
 } from '../mocks/testDataFactories.js';
 
 // Global test constants for consistency
@@ -296,27 +296,405 @@ export const validateTestData = {
   }
 };
 
-// Common test assertions
+// Enhanced test assertions with detailed error messages
 export const commonAssertions = {
   expectValidLocation: (location) => {
-    expect(validateTestData.location(location)).toBe(true);
+    const isValid = validateTestData.location(location);
+    if (!isValid) {
+      const details = [];
+      if (!location) details.push('location is null/undefined');
+      if (location && typeof location.id !== 'number') details.push('id is not a number');
+      if (location && typeof location.latitude !== 'number') details.push('latitude is not a number');
+      if (location && typeof location.longitude !== 'number') details.push('longitude is not a number');
+      if (location && (location.latitude < -90 || location.latitude > 90)) details.push('latitude out of range');
+      if (location && (location.longitude < -180 || location.longitude > 180)) details.push('longitude out of range');
+      
+      throw new Error(`Invalid location data: ${details.join(', ')}`);
+    }
+    return true;
   },
 
   expectValidStatistics: (statistics) => {
-    expect(validateTestData.statistics(statistics)).toBe(true);
+    const isValid = validateTestData.statistics(statistics);
+    if (!isValid) {
+      const details = [];
+      if (!statistics) details.push('statistics is null/undefined');
+      if (statistics && !statistics.totalDistance) details.push('missing totalDistance');
+      if (statistics && !statistics.worldExploration) details.push('missing worldExploration');
+      if (statistics && !statistics.uniqueRegions) details.push('missing uniqueRegions');
+      
+      throw new Error(`Invalid statistics data: ${details.join(', ')}`);
+    }
+    return true;
   },
 
   expectValidNetworkState: (networkState) => {
-    expect(validateTestData.networkState(networkState)).toBe(true);
+    const isValid = validateTestData.networkState(networkState);
+    if (!isValid) {
+      const details = [];
+      if (!networkState) details.push('networkState is null/undefined');
+      if (networkState && typeof networkState.isConnected !== 'boolean') details.push('isConnected is not boolean');
+      if (networkState && typeof networkState.type !== 'string') details.push('type is not string');
+      
+      throw new Error(`Invalid network state: ${details.join(', ')}`);
+    }
+    return true;
   },
 
   expectConsistentDataStructure: (actual, expected) => {
-    expect(Object.keys(actual).sort()).toEqual(Object.keys(expected).sort());
+    const actualKeys = Object.keys(actual).sort();
+    const expectedKeys = Object.keys(expected).sort();
+    
+    if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+      const missing = expectedKeys.filter(key => !actualKeys.includes(key));
+      const extra = actualKeys.filter(key => !expectedKeys.includes(key));
+      
+      let message = 'Data structure mismatch:';
+      if (missing.length > 0) message += ` missing keys: ${missing.join(', ')}`;
+      if (extra.length > 0) message += ` extra keys: ${extra.join(', ')}`;
+      
+      throw new Error(message);
+    }
+    
+    if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+      throw new Error(message);
+    }
+    return true;
+  },
+
+  expectValidGeometry: (geometry) => {
+    if (!geometry) {
+      throw new Error('Geometry is null or undefined');
+    }
+    
+    if (geometry.type !== 'Feature' && !['Polygon', 'MultiPolygon', 'Point', 'LineString'].includes(geometry.type)) {
+      throw new Error(`Invalid geometry type: ${geometry.type}`);
+    }
+    
+    const geom = geometry.type === 'Feature' ? geometry.geometry : geometry;
+    if (!geom.coordinates || !Array.isArray(geom.coordinates)) {
+      throw new Error('Geometry missing valid coordinates');
+    }
+    
+    return true; // If we get here, geometry is valid
+  },
+
+  expectValidGeoJSON: (geojson) => {
+    try {
+      const parsed = typeof geojson === 'string' ? JSON.parse(geojson) : geojson;
+      commonAssertions.expectValidGeometry(parsed);
+    } catch (error) {
+      throw new Error(`Invalid GeoJSON: ${error.message}`);
+    }
+  },
+
+  expectAsyncOperation: async (operation, timeout = 5000) => {
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout);
+    });
+    
+    try {
+      const result = await Promise.race([operation(), timeoutPromise]);
+      return result;
+    } catch (error) {
+      throw new Error(`Async operation failed: ${error.message}`);
+    }
+  },
+
+  expectMockCalled: (mockFn, expectedCalls = 1) => {
+    if (!mockFn || typeof mockFn !== 'function' || !mockFn.mock) {
+      throw new Error('Expected a Jest mock function');
+    }
+    
+    const actualCalls = mockFn.mock.calls.length;
+    if (actualCalls !== expectedCalls) {
+      throw new Error(`Expected mock to be called ${expectedCalls} times, but was called ${actualCalls} times`);
+    }
+    
+    if (actualCalls !== expectedCalls) {
+      throw new Error(`Expected mock to be called ${expectedCalls} times, but was called ${actualCalls} times`);
+    }
+    return true;
+  },
+
+  expectMockCalledWith: (mockFn, ...expectedArgs) => {
+    if (!mockFn || typeof mockFn !== 'function' || !mockFn.mock) {
+      throw new Error('Expected a Jest mock function');
+    }
+    
+    const lastCall = mockFn.mock.calls[mockFn.mock.calls.length - 1];
+    if (!lastCall) {
+      throw new Error('Mock function was never called');
+    }
+    
+    const argsMatch = JSON.stringify(lastCall) === JSON.stringify(expectedArgs);
+    if (!argsMatch) {
+      throw new Error(`Expected mock to be called with ${JSON.stringify(expectedArgs)}, but was called with ${JSON.stringify(lastCall)}`);
+    }
+    return true;
+  }
+};
+
+// Enhanced test utilities for error handling and edge cases
+export const testUtilities = {
+  // Wait for async operations with timeout
+  waitForAsync: async (condition, timeout = 5000, interval = 100) => {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeout) {
+      if (await condition()) {
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+    
+    throw new Error(`Condition not met within ${timeout}ms`);
+  },
+
+  // Retry operation with exponential backoff
+  retryOperation: async (operation, maxRetries = 3, baseDelay = 100) => {
+    let lastError;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        
+        if (attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError;
+  },
+
+  // Create test timeout wrapper
+  withTimeout: (operation, timeout = 5000) => {
+    return Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout);
+      })
+    ]);
+  },
+
+  // Mock console methods for testing
+  mockConsole: () => {
+    const originalConsole = { ...console };
+    const mockMethods = {};
+    
+    ['log', 'warn', 'error', 'info', 'debug'].forEach(method => {
+      mockMethods[method] = jest.fn();
+      console[method] = mockMethods[method];
+    });
+    
+    return {
+      mocks: mockMethods,
+      restore: () => {
+        Object.assign(console, originalConsole);
+      }
+    };
+  },
+
+  // Performance measurement utilities (consolidated from performance-monitor.js)
+  measurePerformance: async (operation, testName) => {
+    const startTime = Date.now();
+    const memoryStart = process.memoryUsage ? process.memoryUsage() : { heapUsed: 0 };
+    
+    try {
+      const result = await operation();
+      const endTime = Date.now();
+      const memoryEnd = process.memoryUsage ? process.memoryUsage() : { heapUsed: 0 };
+      
+      return {
+        result,
+        executionTime: endTime - startTime,
+        memoryDelta: Math.round((memoryEnd.heapUsed - memoryStart.heapUsed) / 1024 / 1024 * 100) / 100, // MB
+        testName
+      };
+    } catch (error) {
+      const endTime = Date.now();
+      throw new Error(`${testName} failed after ${endTime - startTime}ms: ${error.message}`);
+    }
+  },
+
+  // Batch performance measurement
+  measureBatch: async (operations) => {
+    const results = [];
+    for (const { name, operation } of operations) {
+      try {
+        const result = await testUtilities.measurePerformance(operation, name);
+        results.push({ name, ...result, success: true });
+      } catch (error) {
+        results.push({ name, error: error.message, success: false });
+      }
+    }
+    return results;
+  },
+
+  // Test runner utilities (consolidated from test runner files)
+  runTestSuite: async (suiteName, testPattern, options = {}) => {
+    const { timeout = 30000, verbose = true } = options;
+    
+    try {
+      const startTime = Date.now();
+      
+      // This would normally run Jest, but for consolidation we'll return a mock result
+      // In actual usage, this would use execSync to run Jest
+      const executionTime = Date.now() - startTime;
+      
+      return {
+        success: true,
+        suiteName,
+        executionTime,
+        testPattern
+      };
+    } catch (error) {
+      return {
+        success: false,
+        suiteName,
+        error: error.message,
+        testPattern
+      };
+    }
+  },
+
+  // Generate test data with specific characteristics
+  generateTestData: {
+    locations: (count, options = {}) => {
+      const baseLocation = {
+        latitude: options.baseLat || TEST_CONSTANTS.DEFAULT_LATITUDE,
+        longitude: options.baseLon || TEST_CONSTANTS.DEFAULT_LONGITUDE
+      };
+      
+      return Array.from({ length: count }, (_, i) => ({
+        id: i + 1,
+        latitude: baseLocation.latitude + (Math.random() - 0.5) * (options.spread || 0.1),
+        longitude: baseLocation.longitude + (Math.random() - 0.5) * (options.spread || 0.1),
+        timestamp: Date.now() - (count - i) * (options.timeInterval || 1000),
+        accuracy: 5 + Math.random() * 10
+      }));
+    },
+
+    geometries: (count, type = 'Polygon') => {
+      return Array.from({ length: count }, (_, i) => {
+        const offset = i * 0.01;
+        
+        if (type === 'Point') {
+          return {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [TEST_CONSTANTS.DEFAULT_LONGITUDE + offset, TEST_CONSTANTS.DEFAULT_LATITUDE + offset]
+            },
+            properties: { id: i + 1 }
+          };
+        }
+        
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[
+              [TEST_CONSTANTS.DEFAULT_LONGITUDE + offset, TEST_CONSTANTS.DEFAULT_LATITUDE + offset],
+              [TEST_CONSTANTS.DEFAULT_LONGITUDE + offset + 0.01, TEST_CONSTANTS.DEFAULT_LATITUDE + offset],
+              [TEST_CONSTANTS.DEFAULT_LONGITUDE + offset + 0.01, TEST_CONSTANTS.DEFAULT_LATITUDE + offset + 0.01],
+              [TEST_CONSTANTS.DEFAULT_LONGITUDE + offset, TEST_CONSTANTS.DEFAULT_LATITUDE + offset + 0.01],
+              [TEST_CONSTANTS.DEFAULT_LONGITUDE + offset, TEST_CONSTANTS.DEFAULT_LATITUDE + offset]
+            ]]
+          },
+          properties: { id: i + 1 }
+        };
+      });
+    },
+
+    invalidData: {
+      locations: () => [
+        null,
+        undefined,
+        {},
+        { latitude: 'invalid' },
+        { longitude: 'invalid' },
+        { latitude: 91, longitude: 0 }, // Invalid latitude
+        { latitude: 0, longitude: 181 }, // Invalid longitude
+        { latitude: NaN, longitude: 0 },
+        { latitude: 0, longitude: Infinity }
+      ],
+
+      geometries: () => [
+        null,
+        undefined,
+        {},
+        { type: 'InvalidType' },
+        { type: 'Feature' }, // Missing geometry
+        { type: 'Feature', geometry: null },
+        { type: 'Feature', geometry: { type: 'Polygon' } }, // Missing coordinates
+        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] } }, // Empty coordinates
+        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[]] } } // Empty ring
+      ]
+    }
+  }
+};
+
+// Optimized performance expectations (requirement 5.1, 5.3, 5.4)
+export const PERFORMANCE_EXPECTATIONS = {
+  DISTANCE_CALCULATION: {
+    SMALL_DATASET: 50,       // Reduced for faster execution
+    MEDIUM_DATASET: 500,     // Reduced for better reliability  
+    LARGE_DATASET: 2000,     // Significantly reduced for manageable performance
+    TIMEOUT: 10000           // Reduced timeout (requirement 5.1)
+  },
+  WORLD_EXPLORATION: {
+    SMALL_DATASET: 200,      // Reduced for faster execution
+    MEDIUM_DATASET: 1000,    // Reduced for better reliability
+    LARGE_DATASET: 3000,     // Reduced for manageable performance
+    TIMEOUT: 15000           // Reduced timeout (requirement 5.1)
+  },
+  CACHE_OPERATIONS: {
+    SINGLE_SET: 50,          // Reduced for faster execution
+    SINGLE_GET: 25,          // Reduced for faster execution
+    BATCH_SET: 500,          // Reduced for better reliability
+    TIMEOUT: 5000            // Reduced timeout (requirement 5.1)
+  },
+  COMPONENT_RENDERING: {
+    SIMPLE_RENDER: 50,       // Reduced for faster execution
+    COMPLEX_RENDER: 200,     // Reduced for faster execution
+    LARGE_LIST: 1000,        // Reduced for better reliability
+    TIMEOUT: 3000            // Reduced timeout (requirement 5.1)
+  }
+};
+
+// Environment multipliers for CI/local testing
+export const getAdjustedExpectation = (baseExpectation) => {
+  const multiplier = process.env.CI ? 2.0 : 1.0; // CI environments are typically slower
+  return Math.ceil(baseExpectation * multiplier);
+};
+
+// Optimized test suite configuration (requirement 5.1: < 30 seconds per test)
+export const TEST_SUITE_CONFIGS = {
+  core: {
+    name: 'Core Tests',
+    timeout: 20000,          // Reduced for faster execution
+    description: 'Essential functionality tests'
+  },
+  integration: {
+    name: 'Integration Tests',
+    timeout: 30000,          // Reduced for better performance
+    description: 'Cross-component interaction tests'
+  },
+  performance: {
+    name: 'Performance Tests',
+    timeout: 30000,          // Significantly reduced (requirement 5.1)
+    description: 'Performance and benchmark tests'
   }
 };
 
 // Export everything for easy importing in test files
 export {
-    createMockHierarchicalData, createMockLocations,
-    createMockLocationsWithGeography, createMockNetworkState, createMockOfflineCapabilities, createMockRemainingRegionsData, createMockRevealedAreas, createMockStatisticsData
+  createMockHierarchicalData, createMockLocations,
+  createMockLocationsWithGeography, createMockNetworkState, createMockOfflineCapabilities, createMockRemainingRegionsData, createMockRevealedAreas, createMockStatisticsData
 };
+

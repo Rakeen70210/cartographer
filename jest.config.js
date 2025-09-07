@@ -2,7 +2,7 @@ module.exports = {
   preset: 'react-native',
   testEnvironment: 'node',
   setupFilesAfterEnv: [
-    '<rootDir>/__tests__/setup/jestSetup.js',
+    '<rootDir>/jest.setup.js',
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   transform: {
@@ -38,6 +38,10 @@ module.exports = {
   ],
   // Increase timeout for all tests to account for system variability
   testTimeout: 30000,
+  // Timeout configuration for different test types
+  setupFilesAfterEnv: [
+    '<rootDir>/jest.setup.js',
+  ],
   // Clear mocks between tests
   clearMocks: true,
   // Reset mocks between tests

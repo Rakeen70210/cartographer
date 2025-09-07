@@ -9,6 +9,68 @@ const mockGeometryValidation = {
   isValidMultiPolygon: jest.fn(() => true),
   isValidFeature: jest.fn(() => true),
   
+  // Key function used by geometry operations
+  isValidPolygonFeature: jest.fn((feature) => {
+    // Handle null/undefined inputs
+    if (!feature) return false;
+    
+    // Handle invalid types
+    if (feature.type === 'NotFeature' || feature.type === 'invalid') return false;
+    
+    // Validate Feature structure
+    if (feature.type !== 'Feature') return false;
+    if (!feature.geometry) return false;
+    
+    // Validate geometry types
+    const validTypes = ['Polygon', 'MultiPolygon'];
+    return validTypes.includes(feature.geometry.type);
+  }),
+  
+  // Validation function used by geometry operations
+  validateGeometry: jest.fn((feature) => {
+    // Handle null/undefined inputs
+    if (!feature) return { isValid: false, errors: ['Geometry is null or undefined'], warnings: [] };
+    
+    // Handle invalid types
+    if (feature.type === 'NotFeature' || feature.type === 'invalid') {
+      return { isValid: false, errors: ['Invalid feature type'], warnings: [] };
+    }
+    
+    // Validate Feature structure
+    if (feature.type !== 'Feature') {
+      return { isValid: false, errors: ['Not a valid Feature'], warnings: [] };
+    }
+    
+    if (!feature.geometry) {
+      return { isValid: false, errors: ['Missing geometry'], warnings: [] };
+    }
+    
+    // Validate geometry types
+    const validTypes = ['Polygon', 'MultiPolygon', 'Point'];
+    if (!validTypes.includes(feature.geometry.type)) {
+      return { isValid: false, errors: [`Invalid geometry type: ${feature.geometry.type}`], warnings: [] };
+    }
+    
+    return { isValid: true, errors: [], warnings: [] };
+  }),
+  
+  // Complexity function used by geometry operations
+  getPolygonComplexity: jest.fn((feature) => ({
+    totalVertices: 100,
+    ringCount: 1,
+    maxRingVertices: 100,
+    averageRingVertices: 100,
+    complexityLevel: 'MEDIUM'
+  })),
+  
+  // Debug function used by geometry operations
+  debugGeometry: jest.fn((geometry, label) => {
+    // Silent in tests unless debugging
+    if (process.env.DEBUG_TESTS) {
+      console.log(`Debug ${label}:`, geometry);
+    }
+  }),
+  
   validateCoordinates: jest.fn(() => true),
   sanitizeCoordinates: jest.fn((coords) => coords),
   fixGeometryIssues: jest.fn((geometry) => geometry),

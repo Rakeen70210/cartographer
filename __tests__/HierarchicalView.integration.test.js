@@ -1,5 +1,4 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import React from 'react';
 
 // Mock all react-native components used in HierarchicalView
 jest.mock('react-native', () => {
@@ -818,6 +817,45 @@ describe('HierarchicalView Integration Tests', () => {
         fireEvent.press(usItem);
         unmount();
       }).not.toThrow();
+    });
+
+    test('component can be imported and rendered without crashing', () => {
+      expect(HierarchicalView).toBeDefined();
+      expect(typeof HierarchicalView).toBe('function');
+      
+      expect(() => {
+        render(
+          <HierarchicalView
+            data={sampleData}
+            onToggleExpand={mockOnToggleExpand}
+            testID="import-test-hierarchy"
+          />
+        );
+      }).not.toThrow();
+    });
+
+    test('renders with minimal data structure', () => {
+      const minimalData = [
+        {
+          id: 'test',
+          type: 'country',
+          name: 'Test Country',
+          explorationPercentage: 10,
+          isExpanded: false,
+          children: []
+        }
+      ];
+      
+      const { getByTestId, getByText } = render(
+        <HierarchicalView
+          data={minimalData}
+          onToggleExpand={mockOnToggleExpand}
+          testID="minimal-hierarchy"
+        />
+      );
+      
+      expect(getByTestId('minimal-hierarchy')).toBeTruthy();
+      expect(getByText(/Test Country/)).toBeTruthy();
     });
   });
 });
